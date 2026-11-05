@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # The pnpm version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm audit --audit-level=high
+
+  owasp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: semgrep/semgrep:1.183.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: semgrep scan --config p/owasp-top-ten --severity ERROR --error --metrics=off

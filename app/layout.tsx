@@ -8,7 +8,7 @@ const description =
   "Post open nursing shifts, let credentialed nurses claim them, and see which shifts are covered in real time."
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://r1cco.com/designli/best-candidate/"),
+  metadataBase: new URL("https://shift-patch.vercel.app/"),
   applicationName: siteName,
   title: {
     default: title,
