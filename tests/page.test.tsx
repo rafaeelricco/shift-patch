@@ -183,3 +183,66 @@ describe("account state on the page", () => {
     expect(screen.getByText("Loading your credential")).toBeTruthy()
   })
 })
+
+describe("successful shift actions", () => {
+  it.each([
+    { action: "claim", inverse: "cancel", message: "Shift claimed", focus: '[data-mine="shift-1"]' },
+    { action: "cancel", inverse: "claim", message: "Shift cancelled, now open", focus: "#open-title" },
+  ])("applies $action and moves focus before the next list response", async ({ action, inverse, message, focus }) => {
+    vi.useFakeTimers()
+    const open = {
+      id: "shift-1",
+      agencyId: "agency-1",
+      agencyName: "Agency",
+      role: "RN",
+      date: "2030-10-01",
+      startTime: "07:00",
+      endTime: "15:00",
+      status: "open",
+      claimedBy: null,
+    }
+    const filled = { ...open, status: "filled", claimedBy: NURSE_A.id }
+    const initial = action === "claim" ? open : filled
+    const updated = action === "claim" ? filled : { ...open, cancellation: { reason: "advance", previousNurseId: NURSE_A.id } }
+    const preWrite = Promise.withResolvers<Response>()
+    const postWrite = Promise.withResolvers<Response>()
+    const listPath = "/api/shifts"
+    const actionPath = `${listPath}/${open.id}/${action}`
+    let reads = 0
+    const fetchMock = vi.fn<typeof fetch>(async (path) => {
+      if (path === actionPath) return json(updated)
+      if (path !== listPath) return firstAccountReply(path)
+      reads += 1
+      if (reads === 1) return json({ shifts: [initial] })
+      return reads === 2 ? preWrite.promise : postWrite.promise
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    await visit()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    const oldRead = fetchMock.mock.calls.filter(([path]) => path === listPath)[1]?.[1]
+    expect(oldRead?.signal?.aborted).toBe(false)
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(`shift-${action}-button`))
+    })
+    expect(reads).toBe(3)
+    expect(screen.queryByTestId(`shift-${action}-button`)).toBeNull()
+    expect(screen.getByTestId(`shift-${inverse}-button`)).toBeTruthy()
+    expect(screen.getByTestId("notification-banner").textContent).toBe(message)
+    const focused = document.querySelector(focus)
+    expect(focused).toBeTruthy()
+    expect(document.activeElement).toBe(focused)
+    expect(oldRead?.signal?.aborted).toBe(true)
+
+    await act(async () => {
+      preWrite.resolve(json({ shifts: [initial] }))
+    })
+    expect(screen.queryByTestId(`shift-${action}-button`)).toBeNull()
+    expect(screen.getByTestId(`shift-${inverse}-button`)).toBeTruthy()
+    expect(screen.getByTestId("notification-banner").textContent).toBe(message)
+    expect(fetchMock.mock.calls.filter(([path]) => path === actionPath)).toHaveLength(1)
+  })
+})

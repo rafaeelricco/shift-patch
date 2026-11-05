@@ -372,13 +372,17 @@ type Polled<T> = { data: RemoteData<FetchError, T>; updatedAt: POSIX | null; sta
  * by the timer. A failed poll keeps the last good data and sets `stale` until the next good read; before any good
  * read it is `Failed`. It never touches the banner. The effect keys on `deps`, never on `read`'s identity.
  */
-function usePoll<T>(read: () => Future<FetchError, T>, deps: ReadonlyArray<unknown>): Polled<T> {
+function usePoll<T>(
+  read: () => Future<FetchError, T>,
+  deps: ReadonlyArray<unknown>
+): Polled<T> & { updateAndRefresh: (update: (value: T) => T) => void } {
   const [polled, setPolled] = useState<{ data: RemoteData<FetchError, T>; updatedAt: POSIX | null; stale: boolean }>({
     data: Loading(),
     updatedAt: null,
     stale: false,
   })
   const [tick, setTick] = useState(0)
+  const stopPoll = useRef<Cancel>(() => {})
   const latestRead = useRef(read)
   useEffect(() => {
     latestRead.current = read
@@ -402,14 +406,28 @@ function usePoll<T>(read: () => Future<FetchError, T>, deps: ReadonlyArray<unkno
         next()
       }
     )
-    return () => {
+    const stop = () => {
       cancel()
       window.clearTimeout(timer)
     }
+    stopPoll.current = stop
+    return stop
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the caller's deps plus the poll tick, not on `read`
   }, [...deps, tick])
-  const refresh = useCallback(() => setTick((n) => n + 1), [])
-  return { ...polled, refresh }
+  const refresh = useCallback(() => {
+    stopPoll.current()
+    setTick((n) => n + 1)
+  }, [])
+  const updateAndRefresh = useCallback(
+    (update: (value: T) => T) => {
+      setPolled((prev) =>
+        prev.data instanceof Ready ? { ...prev, data: Ready(update(prev.data.value)) } : prev
+      )
+      refresh()
+    },
+    [refresh]
+  )
+  return { ...polled, refresh, updateAndRefresh }
 }
 
 /** The quiet line beside a polled section's heading while `stale`. Never a banner. */
@@ -617,12 +635,23 @@ function NurseScreen({ user }: { user: User }) {
   const credential = usePoll(loadCredential, [user.id.value])
   const banner = useBanner()
   const { run } = useSingleFlight()
+  const focusAfterCommit = useRef<string | null>(null)
+  useEffect(() => {
+    const selector = focusAfterCommit.current
+    focusAfterCommit.current = null
+    if (selector !== null) document.querySelector<HTMLElement>(selector)?.focus()
+  })
   const refreshAll = (): void => {
     shifts.refresh()
     credential.refresh()
   }
   // Each action reports its own outcome and refreshes, failed ones too.
-  const report = <T,>(task: Future<FetchError, T>, succeeded: string, offline: string, after: (value: T) => void) =>
+  const report = <T extends Shift,>(
+    task: Future<FetchError, T>,
+    succeeded: string,
+    offline: string,
+    focus: (value: T) => string
+  ) =>
     task.bimap(
       (error) => {
         banner.fail(error, offline)
@@ -630,9 +659,10 @@ function NurseScreen({ user }: { user: User }) {
         return error
       },
       (value) => {
+        focusAfterCommit.current = focus(value)
+        shifts.updateAndRefresh((rows) => rows.map((row) => (row.id === value.id ? value : row)))
+        credential.refresh()
         banner.succeed(succeeded)
-        refreshAll()
-        after(value)
         return value
       }
     )
@@ -645,7 +675,7 @@ function NurseScreen({ user }: { user: User }) {
         call(api.claimShift, { id: shift.id }, {}),
         "Shift claimed",
         "Couldn't claim shift, try again",
-        () => focusLater(`[data-mine="${shift.id}"]`)
+        (updated) => `[data-mine="${updated.id}"]`
       )
     })
   const cancel = (shift: Shift): void =>
@@ -653,10 +683,12 @@ function NurseScreen({ user }: { user: User }) {
       banner.clear()
       // FR-6.8: a nurse's cancel is always "advance", in one click with no confirmation (FR-6.7).
       return report(
-        call(api.cancelShift, { id: shift.id }, { reason: "advance" }),
+        call(api.cancelShift, { id: shift.id }, { reason: "advance" }).map(
+          ({ cancellation: _cancellation, ...updated }) => updated
+        ),
         "Shift cancelled, now open",
         "Couldn't cancel shift, try again",
-        () => focusLater("#open-title")
+        () => "#open-title"
       )
     })
   const toUpload = (): void => {
