@@ -58,10 +58,13 @@ test.describe("POST /api/auth/login", () => {
   })
 
   test("NFR-2 the 21st failure for one email and address is 429; another email is unaffected", async ({ request }) => {
-    for (let i = 0; i < 20; i++) {
-      const res = await request.post("/api/auth/login", { data: { email: ACCOUNTS["nurse-1"].email, password: "bad" } })
-      expect(res.status()).toBe(401)
-    }
+    const attempts = await Promise.all(
+      Array.from({ length: 21 }, () =>
+        request.post("/api/auth/login", { data: { email: ACCOUNTS["nurse-1"].email, password: "bad" } })
+      )
+    )
+    expect(attempts.filter((res) => res.status() === 401)).toHaveLength(20)
+    expect(attempts.filter((res) => res.status() === 429)).toHaveLength(1)
     const blocked = await request.post("/api/auth/login", {
       data: { email: ACCOUNTS["nurse-1"].email, password: PASSWORD },
     })
