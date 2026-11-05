@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.pnpm-store
+**/coverage
+tests/golden
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+*.backup-*
+.claude/worktrees
