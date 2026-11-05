@@ -1,5 +1,6 @@
 export { cn }
 
-function cn(...classes: ReadonlyArray<string | false | undefined>): string {
-  return classes.filter(Boolean).join(" ")
-}
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+const cn = (...inputs: ClassValue[]): string => twMerge(clsx(inputs))
