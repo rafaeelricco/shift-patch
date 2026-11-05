@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * ShiftPatch design tokens: the app system from DESIGN-SYSTEM.md.
+ * ShiftPatch design tokens: see .claude/skills/shift-patch-dev/references/front-end/design-system.md.
  * Light only. Values live in :root; @theme only maps names to utilities.
  * Use one system per surface. Do not load the site tokens alongside these.
  */
