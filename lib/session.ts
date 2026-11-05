@@ -46,11 +46,13 @@ function decodeStored(raw: string): Maybe<s.Infer<typeof schema_stored>> {
   )
 }
 
-function readStored(): Maybe<string> {
+type Stored = { type: "Unavailable" } | { type: "Read"; raw: Maybe<string> }
+
+function readStored(): Stored {
   try {
-    return fromNullable(window.localStorage.getItem(SESSION_KEY))
+    return { type: "Read", raw: fromNullable(window.localStorage.getItem(SESSION_KEY)) }
   } catch {
-    return Nothing()
+    return { type: "Unavailable" }
   }
 }
 
@@ -74,8 +76,12 @@ function getServerSessionSnapshot(): Session {
   return CHECKING
 }
 
-/** `useSyncExternalStore`'s subscribe. The first subscriber resolves `Checking` from the cache, after hydration. */
+/**
+ * `useSyncExternalStore`'s subscribe. The first subscriber re-reads the cache, after hydration and after any gap with
+ * no subscribers, when `storage` events were missed. If storage is unavailable, a held session stays in memory.
+ */
 function subscribeToSession(listener: () => void): () => void {
+  const isFirst = listeners.size === 0
   const onStorage = (event: StorageEvent): void => {
     if (event.storageArea !== window.localStorage) return
     if (event.key !== null && event.key !== SESSION_KEY) return
@@ -85,7 +91,11 @@ function subscribeToSession(listener: () => void): () => void {
   const offUnauthorized = onUnauthorized(() => signOut())
   listeners.add(listener)
   window.addEventListener("storage", onStorage)
-  if (current.type === "Checking") commit(fromRaw(readStored()))
+  if (isFirst || current.type === "Checking") {
+    const stored = readStored()
+    if (stored.type === "Read") commit(fromRaw(stored.raw))
+    else if (current.type === "Checking") commit({ type: "SignedOut" })
+  }
   return () => {
     listeners.delete(listener)
     window.removeEventListener("storage", onStorage)

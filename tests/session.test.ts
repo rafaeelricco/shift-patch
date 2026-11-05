@@ -288,6 +288,45 @@ describe("several subscribers", () => {
   })
 })
 
+describe("resubscribing after everyone unsubscribed", () => {
+  it("picks up a sign-out made while nothing was listening", async () => {
+    window.localStorage.setItem("session", STORED)
+    const app = await load()
+    app.subscribeToSession(() => {})()
+    window.localStorage.removeItem("session")
+
+    subscribe(app)
+
+    expect(app.getSessionSnapshot()).toEqual({ type: "SignedOut" })
+  })
+
+  it("picks up another account made while nothing was listening", async () => {
+    window.localStorage.setItem("session", STORED)
+    const app = await load()
+    app.subscribeToSession(() => {})()
+    window.localStorage.setItem("session", JSON.stringify({ token: "jwt-2", user: { ...USER, id: "user-2" } }))
+
+    subscribe(app)
+
+    const session = app.getSessionSnapshot()
+    expect(session.type === "SignedIn" && session.user.id.value).toBe("user-2")
+  })
+
+  it("keeps an in-memory session when storage is unavailable", async () => {
+    window.localStorage.setItem("session", STORED)
+    const app = await load()
+    app.subscribeToSession(() => {})()
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("denied")
+    })
+
+    subscribe(app)
+
+    expect(app.getSessionSnapshot().type).toBe("SignedIn")
+    vi.restoreAllMocks()
+  })
+})
+
 describe("other tabs", () => {
   const storageEvent = (key: string | null, newValue: string | null): StorageEvent =>
     new StorageEvent("storage", { key, newValue, storageArea: window.localStorage })
