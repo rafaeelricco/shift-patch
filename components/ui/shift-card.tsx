@@ -1,9 +1,12 @@
+export { ShiftCard, type ShiftSummary }
+
 import { type ComponentProps, type ReactNode } from "react"
 
 import { cn } from "@lib/utils"
-import { StatusBadge } from "@/components/ui/status-badge"
+import { StatusBadge } from "@ui/status-badge"
+import { surfaceCard } from "@ui/surface-card"
 
-export type ShiftSummary = {
+type ShiftSummary = {
   role: "RN" | "LPN"
   agencyName: string
   date: string
@@ -17,10 +20,11 @@ type ShiftCardProps = { shift: ShiftSummary; detail?: string; action?: ReactNode
   "children"
 >
 
-export function ShiftCard({ shift, detail, action, className, ...rest }: ShiftCardProps) {
+/** `data-testid` (`shift-list-item`), `tabIndex` and aria props reach the `<article>` through `rest`. */
+function ShiftCard({ shift, detail, action, className, ...rest }: ShiftCardProps) {
   return (
     <article
-      className={cn("surface-card flex flex-wrap items-center justify-between gap-x-6 gap-y-3 p-4", className)}
+      className={cn(surfaceCard, "flex flex-wrap items-center justify-between gap-x-6 gap-y-3 p-4", className)}
       {...rest}
     >
       <div className="min-w-0">

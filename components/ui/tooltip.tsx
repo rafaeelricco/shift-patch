@@ -4,6 +4,7 @@ export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
 
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 import { cn } from "@lib/utils"
+import { popupMotion } from "@ui/popover"
 
 function TooltipProvider({ delay = 0, ...props }: TooltipPrimitive.Provider.Props) {
   return <TooltipPrimitive.Provider data-slot="tooltip-provider" delay={delay} {...props} />
@@ -38,7 +39,11 @@ function TooltipContent({
       >
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
-          className={cn("tooltip-popup z-50 w-fit max-w-xs", className)}
+          className={cn(
+            popupMotion,
+            "z-50 inline-flex w-fit max-w-xs items-center gap-1.5 rounded-(--tooltip-border-radius) bg-(--tooltip-compact-background-color) p-(--tooltip-compact-padding) font-sans text-(length:--tooltip-compact-font-size) leading-4 font-(--tooltip-compact-font-weight) text-(--tooltip-compact-text-color) data-instant:transition-none",
+            className
+          )}
           {...props}
         >
           {children}

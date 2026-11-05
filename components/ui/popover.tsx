@@ -1,11 +1,34 @@
 "use client"
 
-export { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger }
+export {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+  popupMotion,
+  popupSurface,
+}
 
 import * as React from "react"
 
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import { cn } from "@lib/utils"
+
+/** Floating panels fade with a small scale from their anchor; shared by the select, menu, popover and tooltip popups. */
+const popupMotion = cn(
+  "origin-(--transform-origin) outline-none",
+  "transition-[opacity,scale] duration-(--transition-duration-basic) ease-[var(--ease-basic),var(--cubic-enter)]",
+  "data-ending-style:scale-97 data-ending-style:opacity-0 data-starting-style:scale-97 data-starting-style:opacity-0",
+  "motion-reduce:data-ending-style:scale-100 motion-reduce:data-starting-style:scale-100"
+)
+
+/** The flat floating panel with a hairline frame; shared by the select, menu and popover popups. */
+const popupSurface = cn(
+  "rounded-2xl bg-elevated font-sans text-sm font-normal text-primary shadow-hairline",
+  popupMotion
+)
 
 function Popover({ ...props }: PopoverPrimitive.Root.Props) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
@@ -35,7 +58,7 @@ function PopoverContent({
       >
         <PopoverPrimitive.Popup
           data-slot="popover-content"
-          className={cn("popover-popup z-50 flex w-72 flex-col gap-2.5 p-2.5", className)}
+          className={cn(popupSurface, "z-50 flex w-72 flex-col gap-2.5 p-2.5", className)}
           {...props}
         />
       </PopoverPrimitive.Positioner>

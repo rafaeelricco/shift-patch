@@ -16,6 +16,9 @@ export {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
+  menuItem,
+  menuLabel,
+  menuSeparator,
 }
 
 import * as React from "react"
@@ -24,7 +27,29 @@ import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { ArrowRight01Icon, Tick02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { cn } from "@lib/utils"
+import { popupSurface } from "@ui/popover"
 import { ScrollArea } from "@ui/scroll-area"
+
+/** A row in a menu or select list; shared by the menu items and SelectItem. */
+const menuItem = cn(
+  "relative flex min-h-(--app-menu-item-height) cursor-default items-center gap-(--menu-item-gap) rounded-(--menu-item-radius) p-(--app-menu-item-padding) font-sans text-sm font-normal text-primary outline-none select-none",
+  "[&_svg]:pointer-events-none [&_svg]:size-icon-sm [&_svg]:shrink-0",
+  "data-disabled:pointer-events-none data-disabled:text-disabled data-highlighted:bg-(--menu-item-background-color)"
+)
+
+/** Menu-only states on top of menuItem: an open submenu, the inset, and the destructive variant. */
+const menuOnlyItem = cn(
+  menuItem,
+  "data-popup-open:bg-(--menu-item-background-color) data-[inset=true]:pl-7",
+  "data-[variant=destructive]:text-danger data-[variant=destructive]:data-highlighted:bg-danger-ghost-hover"
+)
+
+/** A group heading in a menu or select list. */
+const menuLabel =
+  "px-(--app-menu-gutter) py-input-xs font-sans text-xs font-medium tracking-wide text-secondary data-[inset=true]:pl-7"
+
+/** A hairline between menu or select groups. */
+const menuSeparator = "my-input-xs h-px bg-default"
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
@@ -56,7 +81,15 @@ function DropdownMenuContent({
         side={side}
         sideOffset={sideOffset}
       >
-        <MenuPrimitive.Popup data-slot="dropdown-menu-content" className={cn("menu-popup z-50", className)} {...props}>
+        <MenuPrimitive.Popup
+          data-slot="dropdown-menu-content"
+          className={cn(
+            popupSurface,
+            "z-50 max-h-(--available-height) w-(--anchor-width) min-w-(--app-menu-min-width) overflow-hidden",
+            className
+          )}
+          {...props}
+        >
           <ScrollArea
             className="max-h-[inherit]"
             viewportProps={{ tabIndex: -1, className: "h-auto max-h-[inherit]" }}
@@ -85,7 +118,7 @@ function DropdownMenuLabel({
     <MenuPrimitive.GroupLabel
       data-slot="dropdown-menu-label"
       data-inset={inset}
-      className={cn("menu-label", className)}
+      className={cn(menuLabel, className)}
       {...props}
     />
   )
@@ -105,7 +138,7 @@ function DropdownMenuItem({
       data-slot="dropdown-menu-item"
       data-inset={inset}
       data-variant={variant}
-      className={cn("menu-item", className)}
+      className={cn(menuOnlyItem, className)}
       {...props}
     />
   )
@@ -127,7 +160,7 @@ function DropdownMenuSubTrigger({
     <MenuPrimitive.SubmenuTrigger
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
-      className={cn("menu-item", className)}
+      className={cn(menuOnlyItem, className)}
       {...props}
     >
       {children}
@@ -169,7 +202,7 @@ function DropdownMenuCheckboxItem({
     <MenuPrimitive.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
-      className={cn("menu-item pr-8", className)}
+      className={cn(menuOnlyItem, "pr-8", className)}
       {...props}
     >
       <span
@@ -201,7 +234,7 @@ function DropdownMenuRadioItem({
     <MenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       data-inset={inset}
-      className={cn("menu-item pr-8", className)}
+      className={cn(menuOnlyItem, "pr-8", className)}
       {...props}
     >
       <span
@@ -221,12 +254,18 @@ function DropdownMenuSeparator({ className, ...props }: MenuPrimitive.Separator.
   return (
     <MenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
-      className={cn("menu-separator -mx-1.5", className)}
+      className={cn(menuSeparator, "-mx-1.5", className)}
       {...props}
     />
   )
 }
 
 function DropdownMenuShortcut({ className, ...props }: React.ComponentProps<"span">) {
-  return <span data-slot="dropdown-menu-shortcut" className={cn("menu-shortcut", className)} {...props} />
+  return (
+    <span
+      data-slot="dropdown-menu-shortcut"
+      className={cn("ml-auto font-sans text-xs font-normal tracking-wide text-secondary", className)}
+      {...props}
+    />
+  )
 }

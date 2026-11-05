@@ -11,6 +11,7 @@ export {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
+  selectTrigger,
 }
 
 import * as React from "react"
@@ -18,8 +19,28 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { ArrowDown01Icon, ArrowUp01Icon, Tick02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@lib/utils"
+import { menuItem, menuLabel, menuSeparator } from "@ui/dropdown-menu"
+import { fieldControl } from "@ui/input"
+import { popupSurface } from "@ui/popover"
 import { ScrollArea } from "@ui/scroll-area"
+
+/** A field control sized to its value; shared by SelectTrigger and the forms triggers. */
+const selectTrigger = cn(
+  fieldControl,
+  "inline-flex w-fit cursor-pointer items-center justify-between gap-input-sm pr-gutter-xs whitespace-nowrap select-none",
+  "data-placeholder:text-tertiary",
+  "[&_svg]:pointer-events-none [&_svg]:size-icon-sm [&_svg]:shrink-0"
+)
+
+// The size keys on data-size so it outranks fieldControl's height; twMerge does not merge custom spacing names.
+const selectTriggerVariants = cva(selectTrigger, {
+  variants: { size: { default: "", sm: "data-[size=sm]:h-control-sm data-[size=sm]:text-sm" } },
+  defaultVariants: { size: "default" },
+})
+
+const selectScrollArrow = "cursor-default bg-elevated py-input-xs [&>svg]:size-icon-sm"
 
 const Select = SelectPrimitive.Root
 
@@ -44,15 +65,15 @@ function SelectTrigger({
   icon,
   children,
   ...props
-}: SelectPrimitive.Trigger.Props & {
-  size?: "sm" | "default"
-  icon?: React.ReactElement
-}) {
+}: SelectPrimitive.Trigger.Props &
+  VariantProps<typeof selectTriggerVariants> & {
+    icon?: React.ReactElement
+  }) {
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       data-size={size}
-      className={cn("field-control select-trigger", className)}
+      className={cn(selectTriggerVariants({ size }), className)}
       {...props}
     >
       {children}
@@ -87,7 +108,11 @@ function SelectContent({
         <SelectPrimitive.Popup
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
-          className={cn("select-popup relative isolate z-50", className)}
+          className={cn(
+            popupSurface,
+            "relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 overflow-hidden data-[align-trigger=true]:transition-none",
+            className
+          )}
           {...props}
         >
           <SelectScrollUpButton />
@@ -120,12 +145,12 @@ function SelectContent({
 }
 
 function SelectLabel({ className, ...props }: SelectPrimitive.GroupLabel.Props) {
-  return <SelectPrimitive.GroupLabel data-slot="select-label" className={cn("menu-label", className)} {...props} />
+  return <SelectPrimitive.GroupLabel data-slot="select-label" className={cn(menuLabel, className)} {...props} />
 }
 
 function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Props) {
   return (
-    <SelectPrimitive.Item data-slot="select-item" className={cn("select-item w-full pr-8", className)} {...props}>
+    <SelectPrimitive.Item data-slot="select-item" className={cn(menuItem, "w-full pr-8", className)} {...props}>
       <SelectPrimitive.ItemText className="flex flex-1 shrink-0 gap-2 whitespace-nowrap">
         {children}
       </SelectPrimitive.ItemText>
@@ -142,7 +167,7 @@ function SelectSeparator({ className, ...props }: SelectPrimitive.Separator.Prop
   return (
     <SelectPrimitive.Separator
       data-slot="select-separator"
-      className={cn("menu-separator pointer-events-none -mx-1.5", className)}
+      className={cn(menuSeparator, "pointer-events-none -mx-1.5", className)}
       {...props}
     />
   )
@@ -152,7 +177,7 @@ function SelectScrollUpButton({ className, ...props }: React.ComponentProps<type
   return (
     <SelectPrimitive.ScrollUpArrow
       data-slot="select-scroll-up-button"
-      className={cn("select-scroll-arrow top-0 z-10 flex w-full items-center justify-center", className)}
+      className={cn(selectScrollArrow, "top-0 z-10 flex w-full items-center justify-center", className)}
       {...props}
     >
       <HugeiconsIcon icon={ArrowUp01Icon} />
@@ -164,7 +189,7 @@ function SelectScrollDownButton({ className, ...props }: React.ComponentProps<ty
   return (
     <SelectPrimitive.ScrollDownArrow
       data-slot="select-scroll-down-button"
-      className={cn("select-scroll-arrow bottom-0 z-10 flex w-full items-center justify-center", className)}
+      className={cn(selectScrollArrow, "bottom-0 z-10 flex w-full items-center justify-center", className)}
       {...props}
     >
       <HugeiconsIcon icon={ArrowDown01Icon} />

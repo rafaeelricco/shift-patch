@@ -72,7 +72,12 @@ function PaginationNext({ text = "Next", ...props }: PaginationLinkProps & { tex
 
 function PaginationEllipsis({ className, ...props }: ComponentProps<"span">) {
   return (
-    <span aria-hidden data-slot="pagination-ellipsis" className={cn("pagination-ellipsis", className)} {...props}>
+    <span
+      aria-hidden
+      data-slot="pagination-ellipsis"
+      className={cn("flex size-control-lg items-center justify-center text-secondary [&>svg]:size-icon-sm", className)}
+      {...props}
+    >
       <HugeiconsIcon icon={MoreHorizontalIcon} />
       <span className="sr-only">More pages</span>
     </span>

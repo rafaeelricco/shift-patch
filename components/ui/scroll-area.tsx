@@ -30,7 +30,10 @@ function ScrollArea({ className, children, viewportProps = {}, contentProps = {}
     <ScrollAreaPrimitive.Root data-slot="scroll-area" className={cn("relative", className)} {...props}>
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className={cn("scroll-area-viewport size-full overflow-x-hidden!", viewportClassName)}
+        className={cn(
+          "size-full overflow-x-hidden! rounded-[inherit] outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid",
+          viewportClassName
+        )}
         {...viewportRest}
       >
         <ScrollAreaPrimitive.Content
@@ -53,10 +56,16 @@ function ScrollBar({ className, orientation = "vertical", ...props }: ScrollArea
       data-slot="scroll-area-scrollbar"
       data-orientation={orientation}
       orientation={orientation}
-      className={cn("scroll-area-scrollbar", className)}
+      className={cn(
+        "z-20 flex touch-none p-px select-none data-[orientation=horizontal]:h-2.5 data-[orientation=horizontal]:flex-col data-[orientation=vertical]:h-full data-[orientation=vertical]:w-2.5",
+        className
+      )}
       {...props}
     >
-      <ScrollAreaPrimitive.Thumb data-slot="scroll-area-thumb" className="scroll-area-thumb" />
+      <ScrollAreaPrimitive.Thumb
+        data-slot="scroll-area-thumb"
+        className="relative flex-1 rounded-full bg-(--alpha-08) transition-[background-color] duration-(--transition-duration-basic) ease-basic hover:bg-(--alpha-12) active:bg-(--alpha-16)"
+      />
     </ScrollAreaPrimitive.Scrollbar>
   )
 }

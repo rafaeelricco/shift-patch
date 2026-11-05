@@ -6,7 +6,7 @@
  *
  * ShiftPatch's forms are built this way (sign-in, the new shift form, cancelling a shift, adding a credential and the
  * timesheet), so labels, errors, validation timing, ids and test ids behave the same everywhere. The fields render
- * with the design system's `.field` parts: a hint sits under the control and an error replaces it.
+ * with the design system's field parts: a hint sits under the control and an error replaces it.
  *
  * ```tsx
  * const { fields, onSubmit } = useForm({
@@ -60,10 +60,20 @@ export {
   type TextInputType,
 }
 
+import { cva, type VariantProps } from "class-variance-authority"
+
 import * as React from "react"
 
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
-import { Calendar03Icon, Cancel01Icon, Clock01Icon, DollarCircleIcon, UnfoldMoreIcon } from "@hugeicons/core-free-icons"
+import {
+  Calendar03Icon,
+  Cancel01Icon,
+  Clock01Icon,
+  DollarCircleIcon,
+  UnfoldMoreIcon,
+  ViewIcon,
+  ViewOffSlashIcon,
+} from "@hugeicons/core-free-icons"
 import { fromNullable, fromOptional, type Maybe, Nothing } from "@lib/maybe"
 import { DateOnly, TimeOfDay } from "@lib/time"
 import { Money } from "@lib/money"
@@ -77,8 +87,9 @@ import { Checkbox } from "@ui/checkbox"
 import { Calendar } from "@ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@ui/popover"
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@ui/command"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, selectTrigger } from "@ui/select"
 import { Label } from "@ui/label"
+import { fieldFrame, fieldMessage } from "@ui/field"
 import { AlertCircleIcon } from "@ui/icons"
 
 type ItemConfig =
@@ -1060,6 +1071,21 @@ function useForm<T extends FormInputs>({
 }
 
 /** A label, its control, and one message line: an error replaces the hint, as in the design system's Field. */
+const labelVariants = cva("", {
+  variants: { hideLabel: { true: "sr-only" } },
+})
+
+const inputVariants = cva("peer", {
+  variants: {
+    hasIcon: { true: "pl-9" },
+    hasTrailingControl: { true: "pr-8" },
+    search: { true: "[&::-webkit-search-cancel-button]:hidden" },
+  },
+})
+
+type LabelVariants = VariantProps<typeof labelVariants>
+type InputVariants = VariantProps<typeof inputVariants>
+
 function FormLabel({
   label,
   hideLabel = false,
@@ -1076,9 +1102,9 @@ function FormLabel({
   children: ReactNode
 }) {
   return (
-    <div className="field">
+    <div className={fieldFrame}>
       {typeof label === "string" ?
-        <Label htmlFor={htmlFor} className={cn(hideLabel && "sr-only")}>
+        <Label htmlFor={htmlFor} className={labelVariants({ hideLabel } satisfies LabelVariants)}>
           {label}
         </Label>
       : label}
@@ -1100,12 +1126,12 @@ function FormMessage({
   const id = `${controlId}-message`
   return error.maybe<ReactNode>(
     description.maybe<ReactNode>(null, (hint) => (
-      <p id={id} className="field-message">
+      <p id={id} className={fieldMessage}>
         {hint}
       </p>
     )),
     (message) => (
-      <p id={id} role="alert" className="field-message" data-error>
+      <p id={id} role="alert" className={fieldMessage} data-error>
         <AlertCircleIcon className="mt-px size-4 shrink-0" />
         {message}
       </p>
@@ -1127,6 +1153,27 @@ function messageProps(
   }
 }
 
+/** A leading icon inside a control's wrapper; dims when the control before it (the `peer`) is disabled. */
+const CONTROL_ICON =
+  "pointer-events-none absolute top-1/2 left-gutter-md size-icon-sm -translate-y-1/2 text-secondary peer-disabled:text-disabled"
+
+/** A small round icon button inside a control: the search clear, the password toggle and the tag remove. */
+const CHIP_BUTTON =
+  "inline-flex cursor-pointer items-center justify-center rounded-full text-secondary transition-[color] duration-(--transition-duration-basic) ease-basic focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring disabled:cursor-not-allowed disabled:text-disabled hover:not-disabled:text-primary [&>svg]:size-icon-xs"
+
+/** `CHIP_BUTTON` pinned to a control's trailing edge. */
+const CLEAR_BUTTON = cn(CHIP_BUTTON, "absolute top-1/2 right-gutter-2xs size-control-4xs -translate-y-1/2")
+
+/** The tags field frame: chips and a borderless input, drawn in the field-control states. */
+const TAGS_FRAME = cn(
+  "flex min-h-control-lg w-full cursor-text flex-wrap items-center gap-input-sm rounded-lg bg-control px-gutter-md py-input-xs text-base text-primary inset-ring inset-ring-strong transition-[background-color,box-shadow] duration-(--transition-duration-basic) ease-basic",
+  "has-[>input:focus-visible]:outline-2 has-[>input:focus-visible]:outline-offset-1 has-[>input:focus-visible]:outline-ring",
+  "has-[>input[aria-invalid=true]:focus-visible]:outline-ring-danger has-[>input[aria-invalid=true]:not(:disabled)]:inset-ring-border-danger-outline-hover",
+  "has-[>input:disabled]:cursor-not-allowed has-[>input:disabled]:bg-transparent has-[>input:disabled]:text-disabled has-[>input:disabled]:inset-ring-border-disabled",
+  "hover:not-has-[>input:disabled]:not-has-[>input:focus-visible]:inset-shadow-[0_0_0_99px_var(--color-hover-tint)] hover:not-has-[>input:disabled]:not-has-[>input:focus-visible]:inset-ring-border-primary-outline-hover",
+  "has-[>input[aria-invalid=true]]:hover:not-has-[>input:focus-visible]:bg-danger-surface has-[>input[aria-invalid=true]]:hover:not-has-[>input:focus-visible]:inset-shadow-none has-[>input[aria-invalid=true]]:hover:not-has-[>input:focus-visible]:inset-ring-border-danger-outline-hover"
+)
+
 type FormInputProps = {
   config: AnyElementConfig
   className?: string | undefined
@@ -1144,9 +1191,12 @@ function FormTextField({
 }) {
   const { name, id, value, type, label, hideLabel, description, placeholder, icon, input, error, onChange } =
     config.values
+  // A password field always offers show and hide (design canvas, sign-in "Leading icons, show or hide password").
+  const [revealed, setRevealed] = useState(false)
+  const isPassword = type === "password"
   const hasIcon = icon.maybe(false, () => true)
   const showClear = type === "search" && value.length > 0
-  const needsWrapper = hasIcon || type === "search"
+  const needsWrapper = hasIcon || type === "search" || isPassword
 
   const inputEl = (
     <Input
@@ -1155,10 +1205,17 @@ function FormTextField({
       id={id}
       name={name}
       value={value}
-      className={cn(hasIcon && "pl-9", showClear && "pr-8", type === "search" && "form-search-input", className)}
+      className={cn(
+        inputVariants({
+          hasIcon,
+          hasTrailingControl: showClear || isPassword,
+          search: type === "search",
+        } satisfies InputVariants),
+        className
+      )}
       placeholder={placeholder.withDefault("")}
       disabled={disabled}
-      type={type}
+      type={isPassword && revealed ? "text" : type}
       onChange={(e) => onChange(e.target.value)}
     />
   )
@@ -1169,7 +1226,7 @@ function FormTextField({
         <div className="relative">
           {inputEl}
           {icon.maybe(null, (Icon) => (
-            <HugeiconsIcon icon={Icon} className="form-control-icon" />
+            <HugeiconsIcon icon={Icon} className={CONTROL_ICON} />
           ))}
           {showClear && (
             <button
@@ -1178,10 +1235,22 @@ function FormTextField({
                 if (!disabled) onChange("")
               }}
               aria-label="Clear search"
-              className="form-clear-button"
+              className={CLEAR_BUTTON}
               disabled={disabled}
             >
               <HugeiconsIcon icon={Cancel01Icon} />
+            </button>
+          )}
+          {isPassword && (
+            <button
+              type="button"
+              onClick={() => setRevealed((r) => !r)}
+              aria-label={revealed ? "Hide password" : "Show password"}
+              aria-pressed={revealed}
+              className={CLEAR_BUTTON}
+              disabled={disabled}
+            >
+              <HugeiconsIcon icon={revealed ? ViewOffSlashIcon : ViewIcon} />
             </button>
           )}
         </div>
@@ -1243,7 +1312,7 @@ function FormDateField({
           disabled={disabled ?? false}
           data-testid={testId}
           data-placeholder={value ? undefined : ""}
-          className={cn("field-control select-trigger w-full justify-start text-left", className)}
+          className={cn(selectTrigger, "w-full justify-start text-left", className)}
         >
           <HugeiconsIcon icon={Calendar03Icon} />
           {value ? value.pretty() : placeholder.withDefault("Pick a date")}
@@ -1261,7 +1330,7 @@ function FormDateField({
             }}
           />
           {value && (
-            <div className="form-popover-footer">
+            <div className="border-t border-default p-gutter-xs">
               <Button
                 type="button"
                 variant="ghost-primary"
@@ -1325,9 +1394,9 @@ function FormTimeField({
           data-testid={testId}
           value={timeOfDayToInputValue(value, step)}
           onChange={(e) => onChange(inputValueToTimeOfDay(e.target.value))}
-          className={cn("form-time-input pl-9", className)}
+          className={cn("peer pl-9 [&::-webkit-calendar-picker-indicator]:hidden", className)}
         />
-        <HugeiconsIcon icon={Clock01Icon} className="form-control-icon" />
+        <HugeiconsIcon icon={Clock01Icon} className={CONTROL_ICON} />
       </div>
     </FormLabel>
   )
@@ -1345,7 +1414,7 @@ function FormCheckboxField({
   const checkboxId = `${id}-checkbox`
 
   return (
-    <div className="field">
+    <div className={fieldFrame}>
       <div className="flex items-center gap-2">
         <Checkbox
           {...messageProps(checkboxId, description, error)}
@@ -1388,13 +1457,13 @@ function FormMoneyField({
           type="text"
           inputMode="decimal"
           value={value}
-          className={cn("pl-9", className)}
+          className={cn("peer pl-9", className)}
           placeholder={placeholder.withDefault("0.00")}
           disabled={disabled}
           data-testid={testId}
           onChange={(e) => onChange(e.target.value)}
         />
-        <HugeiconsIcon icon={DollarCircleIcon} className="form-control-icon" />
+        <HugeiconsIcon icon={DollarCircleIcon} className={CONTROL_ICON} />
       </div>
     </FormLabel>
   )
@@ -1460,7 +1529,7 @@ function FormComboboxField({
           disabled={disabled ?? false}
           data-testid={testId}
           data-placeholder={selectedItem ? undefined : ""}
-          className={cn("field-control select-trigger w-full", className)}
+          className={cn(selectTrigger, "w-full", className)}
         >
           <span className="truncate">{selectedItem ? getLabel(selectedItem) : placeholder.withDefault("Select…")}</span>
           <HugeiconsIcon icon={UnfoldMoreIcon} />
@@ -1469,7 +1538,9 @@ function FormComboboxField({
           <Command shouldFilter={false}>
             <CommandInput placeholder="Search…" value={query} onValueChange={setQuery} />
             <CommandList>
-              {visible.length === 0 && <p className="command-empty">{emptyMessage}</p>}
+              {visible.length === 0 && (
+                <p className="py-6 text-center text-sm font-normal text-secondary">{emptyMessage}</p>
+              )}
               <CommandGroup>
                 {visible.map((item) => {
                   const itemValue = getValue(item)
@@ -1492,7 +1563,7 @@ function FormComboboxField({
                 })}
               </CommandGroup>
               {hiddenCount > 0 && (
-                <p className="command-footnote">
+                <p className="border-t border-default px-gutter-md py-gutter-xs text-xs font-normal text-secondary">
                   Showing first {visible.length} of {ranked.length}. Keep typing to narrow results.
                 </p>
               )}
@@ -1623,9 +1694,12 @@ function FormTagsField({
 
   return (
     <FormLabel htmlFor={id} label={label} description={description} error={error}>
-      <div onClick={() => inputRef.current?.focus()} className={cn("form-tags", className)}>
+      <div onClick={() => inputRef.current?.focus()} className={cn(TAGS_FRAME, className)}>
         {value.map((tag) => (
-          <span key={tag} className="form-tag">
+          <span
+            key={tag}
+            className="inline-flex items-center gap-input-xs rounded-full bg-secondary-soft px-gutter-xs text-sm font-normal text-secondary"
+          >
             {tag}
             <button
               type="button"
@@ -1633,7 +1707,7 @@ function FormTagsField({
                 e.stopPropagation()
                 if (!disabled) onChange(value.filter((t) => t !== tag))
               }}
-              className="form-tag-remove"
+              className={CHIP_BUTTON}
               aria-label={`Remove ${tag}`}
               disabled={disabled}
             >
@@ -1654,7 +1728,7 @@ function FormTagsField({
           onBlur={commit}
           placeholder={value.length === 0 ? placeholder.withDefault("") : undefined}
           disabled={disabled}
-          className="form-tags-input"
+          className="min-w-20 flex-1 bg-transparent text-inherit outline-none [font:inherit] placeholder:text-tertiary disabled:cursor-not-allowed"
         />
       </div>
     </FormLabel>

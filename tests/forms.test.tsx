@@ -118,10 +118,10 @@ describe("test ids", () => {
     expect(screen.getByTestId("checkbox-id").getAttribute("role")).toBe("checkbox")
   })
 
-  it("controls take the design system's field-control", () => {
+  it("controls take the field-control surface", () => {
     render(<AllConfigs />)
     for (const testId of ["text-id", "textarea-id", "date-id", "time-id", "money-id", "combobox-id", "select-id"]) {
-      expect(screen.getByTestId(testId).classList.contains("field-control")).toBe(true)
+      expect(screen.getByTestId(testId).classList).toContain("inset-ring-strong")
     }
   })
 })
@@ -137,6 +137,28 @@ describe("native date input", () => {
   })
 })
 
+describe("password input", () => {
+  it("reveals and hides the entered value without changing it", () => {
+    function Form() {
+      const { fields } = useForm({
+        fields: { password: new TextInput({ label: "Password", type: "password", defaultValue: "" }) },
+      })
+      return <FormInput config={fields.password} />
+    }
+
+    render(<Form />)
+    const input = screen.getByLabelText<HTMLInputElement>("Password")
+    fireEvent.change(input, { target: { value: "example-password" } })
+    expect(input.type).toBe("password")
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }))
+    expect(input.type).toBe("text")
+    expect(input.value).toBe("example-password")
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }))
+    expect(input.type).toBe("password")
+    expect(input.value).toBe("example-password")
+  })
+})
+
 describe("validate", () => {
   it("blocks submit and shows the error in place of the hint", async () => {
     const onSave = vi.fn()
@@ -149,7 +171,7 @@ describe("validate", () => {
 
     const alert = await screen.findByRole("alert")
     expect(alert.textContent).toBe("Enter the expiry date.")
-    expect(alert.classList.contains("field-message")).toBe(true)
+    expect(alert.hasAttribute("data-error")).toBe(true)
     expect(alert.id).toBe(input.getAttribute("aria-describedby"))
     expect(input.getAttribute("aria-invalid")).toBe("true")
     expect(screen.queryByText("The date printed on the document.")).toBeNull()
@@ -230,7 +252,7 @@ describe("FileField", () => {
     render(<FileField label="Document" hint="PDF or image." data-testid="credential-upload-input" />)
     const input = screen.getByTestId<HTMLInputElement>("credential-upload-input")
     expect(input.type).toBe("file")
-    expect(input.classList.contains("field-file")).toBe(true)
+    expect(input.classList).toContain("file:bg-secondary-soft")
     expect(screen.getByText("PDF or image.").id).toBe(input.getAttribute("aria-describedby"))
   })
 })
