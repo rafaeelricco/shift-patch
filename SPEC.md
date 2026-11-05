@@ -24,11 +24,11 @@ Removed IDs: none.
 
 ### Status
 
-The Foundation, Nurse and Admin core groups are built. Agency and Operator are next; admin credential review (FR-7.6) is still open.
+The Foundation, Nurse, Admin and Agency core groups are built. Operator is next; admin credential review (FR-7.6) is still open.
 
 Ticked items are covered by automated tests. Validate the current revision with `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, and `make e2e`.
 
-Specs: `tests/e2e/foundation/{fields,login,session,seed}.spec.ts` and `tests/e2e/nurse/{access,browse,claim,cancel,credential,timesheet}.spec.ts` and `tests/e2e/admin/{dashboard,audit}.spec.ts`. Unit tests: `tests/{password,token,request,time,facility,session}.test.ts` and `tests/page.test.tsx`.
+Specs: `tests/e2e/foundation/{fields,login,session,seed}.spec.ts` and `tests/e2e/nurse/{access,browse,claim,cancel,credential,timesheet}.spec.ts` and `tests/e2e/admin/{dashboard,audit}.spec.ts` and `tests/e2e/agency/{post,list,screen}.spec.ts`. Unit tests: `tests/{password,token,request,time,facility,session}.test.ts` and `tests/page.test.tsx`.
 
 What exists:
 
@@ -38,6 +38,8 @@ What exists:
   - Routes:
     - `POST /api/auth/login`
     - `GET /api/shifts`
+    - `POST /api/shifts`
+    - `GET /api/agencies/:agencyId/shifts`
     - `POST /api/shifts/:id/claim`
     - `POST /api/shifts/:id/cancel`
     - `GET /api/credentials/me`
@@ -47,14 +49,13 @@ What exists:
 - **Client**
   - `/` holds the session gate, the canvas sign-in card and one section shell per role (account menu with Sign out, top-bar banner slot).
   - The Nurse screen has open and own shifts, claim and cancel, the credential panel with upload, and scheduled hours.
+  - The Agency screen has the inline post-shift form, its own shifts with the covering nurse, cancel with a reason, and scheduled hours.
   - Every section polls every 3 s.
 - **Tooling**: `playwright.config.ts`, `make db-up`, `make e2e ARGS=…`, and a CI `e2e` job with a Postgres service.
 
 Built but left unticked:
 
-- **FR-1.8**: the login form, landing and sign-out work for all roles. The agency screen is still an empty shell, so its test IDs (FR-1.10) are missing.
-- **FR-6.7, FR-6.8**: the nurse halves are tested. The agency halves (cancel button and reason chooser) are not built.
-- **FR-8.2**: claim, blocked claim, cancel, upload and seed reset each write one entry, and the tests check them. Posting, approval and rejection come in later groups.
+- **FR-8.2**: posting, claim, blocked claim, cancel, upload and seed reset each write one entry, and the tests check them. Approval and rejection come with FR-7.6.
 - **FR-8.3**: every route writes its entry on the same transaction as its change. Only a primitive-level test proves the rollback, plus the blocked-claim route test.
 - **FR-8.4**: a grep confirms no route or screen updates or deletes `audit_log`. No test asserts it yet.
 - **FR-10.1**: `resetToSeed()` exists and is tested. The documented operator command is Operator work.
@@ -82,7 +83,7 @@ Built first. Every actor group depends on it. The seeded shifts and credential d
 - [x] FR-1.5 A valid token whose role is not allowed on a route returns 403 with `{ error }`. (decision)
 - [x] FR-1.6 Identity, role and agency come only from the verified token, never from the request body.
 - [x] FR-1.7 The login form uses `login-email-input`, `login-password-input` and `login-submit-button`. A failed login shows the error message in `notification-banner`.
-- [ ] FR-1.8 Opening the submitted URL with no session shows the login form directly. After login, each role has one landing screen that shows all its required test IDs with no further navigation. FR-1.9 to FR-1.11 list them per role. Items that depend on data appear when that data exists. A user can sign out to switch accounts. (decision)
+- [x] FR-1.8 Opening the submitted URL with no session shows the login form directly. After login, each role has one landing screen that shows all its required test IDs with no further navigation. FR-1.9 to FR-1.11 list them per role. Items that depend on data appear when that data exists. A user can sign out to switch accounts. (decision)
 
 #### Sample data and deployed app (FR-11) · core
 
@@ -134,8 +135,8 @@ The cancel route is built here and shared with the agency and admin groups.
 - [x] FR-6.3 The assigned nurse, the owning agency and the admin may cancel. Everyone else gets 403. (decision)
 - [x] FR-6.4 Cancel checks run in this order: 401 for a bad token, 404 for an unknown ID, 403 for an agency that does not own the shift or a nurse when another nurse holds it, 400 for an invalid reason, and 409 if the shift is open. A nurse cancelling any open shift therefore gets 409. (decision)
 - [x] FR-6.5 A cancelled shift can be claimed again.
-- [ ] FR-6.7 `shift-cancel-button` appears on a nurse's own claimed shifts and on an agency's filled shifts. One click completes the cancellation, with no confirmation step. (decision)
-- [ ] FR-6.8 A nurse's cancel uses `advance`. An agency chooses the reason beside the button, defaulting to `advance`. (decision)
+- [x] FR-6.7 `shift-cancel-button` appears on a nurse's own claimed shifts and on an agency's filled shifts. One click completes the cancellation, with no confirmation step. (decision)
+- [x] FR-6.8 A nurse's cancel uses `advance`. An agency chooses the reason beside the button, defaulting to `advance`. (decision)
 - [x] FR-6.9 Cancelling reopens the shift, so its status after a cancel is `open`, as the cancel route's example requires, and `cancelled` is never a stored or API status. The test ID table also lists `cancelled` as a badge value. See assumption A4. (decision)
 
 #### Credential upload (FR-7) · supporting
@@ -193,21 +194,21 @@ Relies on: FR-6.1 to FR-6.4, FR-6.7 and FR-6.8 (cancel with a reason) and FR-9.1
 
 #### Landing screen · core
 
-- [ ] FR-1.10 The agency landing screen shows `agency-post-shift-button`, `shift-cancel-button` and `timesheet-table`. (decision)
+- [x] FR-1.10 The agency landing screen shows `agency-post-shift-button`, `shift-cancel-button` and `timesheet-table`. (decision)
 
 #### Post a shift (FR-2) · core
 
-- [ ] FR-2.1 `POST /api/shifts` with `{ role, date, startTime, endTime }` from an agency returns 201 and the full shift, with `status: "open"`, `claimedBy: null`, and `agencyId` and `agencyName` taken from the token.
-- [ ] FR-2.2 An `agencyId` in the request body has no effect.
-- [ ] FR-2.3 A caller who is not an agency gets 403.
-- [ ] FR-2.4 An invalid body returns 400 with `{ error }`. Valid means `role` is `RN` or `LPN`, `date` is a real `YYYY-MM-DD` date, times are 24-hour `HH:mm`, and start and end differ. (decision)
-- [ ] FR-2.5 Dates in the past are accepted, because the sample shifts and the spec's example may already be past. (decision)
-- [ ] FR-2.6 An `endTime` earlier than `startTime` is accepted as an overnight shift.
-- [ ] FR-2.7 New shifts get a unique `shift-<n>` ID that is never reused. The spec's `shift-7` is illustrative. (decision)
-- [ ] FR-2.8 `GET /api/agencies/:agencyId/shifts` with the caller's own agency ID returns 200 and `{ agencyId, shifts }`, using the full shift shape and only that agency's shifts.
-- [ ] FR-2.9 Another agency or a nurse requesting that route gets 403. An admin may read any agency, and an unknown agency returns 404 for an admin. (decision)
-- [ ] FR-2.10 `agency-post-shift-button` opens the form and `agency-post-shift-submit-button` submits it. The form opens with valid default values, so it can be submitted unchanged. (decision)
-- [ ] FR-2.11 The agency screen lists only its own shifts with their current status and the covering nurse.
+- [x] FR-2.1 `POST /api/shifts` with `{ role, date, startTime, endTime }` from an agency returns 201 and the full shift, with `status: "open"`, `claimedBy: null`, and `agencyId` and `agencyName` taken from the token.
+- [x] FR-2.2 An `agencyId` in the request body has no effect.
+- [x] FR-2.3 A caller who is not an agency gets 403.
+- [x] FR-2.4 An invalid body returns 400 with `{ error }`. Valid means `role` is `RN` or `LPN`, `date` is a real `YYYY-MM-DD` date, times are 24-hour `HH:mm`, and start and end differ. (decision)
+- [x] FR-2.5 Dates in the past are accepted, because the sample shifts and the spec's example may already be past. (decision)
+- [x] FR-2.6 An `endTime` earlier than `startTime` is accepted as an overnight shift.
+- [x] FR-2.7 New shifts get a unique `shift-<n>` ID that is never reused. The spec's `shift-7` is illustrative. (decision)
+- [x] FR-2.8 `GET /api/agencies/:agencyId/shifts` with the caller's own agency ID returns 200 and `{ agencyId, shifts }`, using the full shift shape and only that agency's shifts.
+- [x] FR-2.9 Another agency or a nurse requesting that route gets 403. An admin may read any agency, and an unknown agency returns 404 for an admin. (decision)
+- [x] FR-2.10 `agency-post-shift-button` opens the form and `agency-post-shift-submit-button` submits it. The form opens with valid default values, so it can be submitted unchanged. (decision)
+- [x] FR-2.11 The agency screen lists only its own shifts with their current status and the covering nurse.
 
 ### Operator
 
