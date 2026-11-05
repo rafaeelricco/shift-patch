@@ -3,10 +3,10 @@
   "compilerOptions": {
     "composite": true,
     "noEmit": true,
-    "paths": { "@lib/*": ["./*"] },
+    "paths": { "@lib/*": ["./*"], "@api/*": ["../api/*"] },
     "target": "ES2020",
     "lib": ["ES2022", "DOM"],
     "noPropertyAccessFromIndexSignature": true
   },
-  "include": ["."]
+  "include": [".", "../api"]
 }
