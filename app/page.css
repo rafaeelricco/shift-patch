@@ -1,0 +1,114 @@
+/* Page-owned details keep the sign-in and loading surfaces consistent with either component styling implementation. */
+.shiftpatch-page-rise-in {
+  animation: pageRiseIn var(--transition-duration-relaxed) var(--cubic-enter) both;
+}
+
+.shiftpatch-page-shimmer {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--color-text-tertiary) 55%, transparent) 0%,
+    var(--color-text-primary) 50%,
+    color-mix(in oklab, var(--color-text-tertiary) 55%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: pageShimmer 2s linear infinite;
+}
+
+.shiftpatch-login-form input.shiftpatch-login-field::placeholder {
+  font-size: 14px;
+}
+
+.shiftpatch-login-form input.shiftpatch-login-field:placeholder-shown {
+  font-size: 14px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .shiftpatch-login-form input.shiftpatch-login-field:hover:not(:disabled):not(:focus-visible) {
+    background-image: linear-gradient(var(--alpha-02), var(--alpha-02));
+    box-shadow: inset 0 0 0 1px var(--color-border-primary-outline-hover);
+    --tw-inset-shadow: 0 0 #0000;
+  }
+}
+
+.shiftpatch-login-form input.shiftpatch-login-field:focus-visible {
+  background-image: none;
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.shiftpatch-login-icon {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  color: var(--color-text-secondary);
+  pointer-events: none;
+}
+
+.shiftpatch-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  color: var(--color-text-secondary);
+}
+
+.shiftpatch-password-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.shiftpatch-password-toggle:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shiftpatch-page-rise-in {
+    animation-name: pageFadeIn;
+  }
+
+  .shiftpatch-page-shimmer {
+    background: none;
+    color: var(--color-text-secondary);
+    animation: pagePulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes pageRiseIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pageShimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes pagePulse {
+  50% {
+    opacity: 0.5;
+  }
+}

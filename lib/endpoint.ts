@@ -1,4 +1,4 @@
-export { PlainEndpoint, UploadEndpoint, type UploadType }
+export { PlainEndpoint, QueryEndpoint, CommandEndpoint, UploadEndpoint, type UploadType }
 
 import { Schema } from "@lib/json/schema"
 
@@ -14,6 +14,32 @@ class PlainEndpoint<Req, Res> {
   readonly method = "post" as const
 
   constructor(args: { path: string; request: Schema<Req>; response: Schema<Res> }) {
+    this.path = args.path
+    this.request = args.request
+    this.response = args.response
+  }
+}
+
+/** A read: `GET path(params)`, no body. `call(endpoint, params)`. */
+class QueryEndpoint<Params, Res> {
+  readonly method = "get" as const
+  readonly path: (params: Params) => string
+  readonly response: Schema<Res>
+
+  constructor(args: { path: (params: Params) => string; response: Schema<Res> }) {
+    this.path = args.path
+    this.response = args.response
+  }
+}
+
+/** A write on a parameterised path (`/api/shifts/:id/claim`): `POST path(params)` with a JSON body. */
+class CommandEndpoint<Params, Req, Res> {
+  readonly method = "post" as const
+  readonly path: (params: Params) => string
+  readonly request: Schema<Req>
+  readonly response: Schema<Res>
+
+  constructor(args: { path: (params: Params) => string; request: Schema<Req>; response: Schema<Res> }) {
     this.path = args.path
     this.request = args.request
     this.response = args.response

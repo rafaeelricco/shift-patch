@@ -66,7 +66,7 @@ cancel.current = call(api.postShift, body).fork(
 )
 ```
 
-- `call` is POST-only, and a `PlainEndpoint`'s `path` is a fixed string. The spec's `GET` and `:id` routes (FR-2, FR-3) need `api/request.ts` extended by the first screen that calls one.
+- `call(plain, body)` POSTs to a fixed path. `call(query, params)` GETs `path(params)` for a `QueryEndpoint`, and `call(command, params, body)` POSTs to `path(params)` for a `CommandEndpoint` (`/api/shifts/:id/claim`).
 - `.chain` sequences dependent writes. `Future.parallel` and `Future.concurrently` run independent ones. (`Future` vocabulary: the composed data layer in `./pages.md`.)
 - Keep the `Cancel` in a ref and call it on unmount, so a late reply never lands on an unmounted form.
 
@@ -145,7 +145,7 @@ Keep the error typed in the cell and convert it where it renders: `fetchErrorToS
 
 ## Examples
 
-`call` source: `api/request.ts`. Registry source: `api/endpoints.ts`. Only `api.login` exists today, so `api.postShift` and `api.uploadCredential` below are illustrative until their screens land.
+`call` source: `api/request.ts`. Registry source: `api/endpoints.ts`. `api.uploadCredential` exists (Nurse screen); `api.postShift` below is illustrative until the Agency screen lands.
 
 Catalog entries are self-contained (`<form>` boilerplate repeated), so any one block stands alone. Each file needs `"use client"` at the top.
 

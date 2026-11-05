@@ -6,6 +6,21 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev"],
       "port": 3000
+    },
+    {
+      "name": "shift-patch-nodb",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["DATABASE_URL=", "JWT_SECRET=", "pnpm", "dev", "--port", "3001"],
+      "port": 3001
+    },
+    {
+      "name": "shift-patch-e2e-db",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "DATABASE_URL=postgres://postgres@localhost:5433/shiftpatch_e2e JWT_SECRET=$(openssl rand -hex 32) exec pnpm dev --port 3002"
+      ],
+      "port": 3002
     }
   ]
 }

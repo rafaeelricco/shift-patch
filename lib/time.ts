@@ -201,6 +201,13 @@ class DateOnly {
 
     return new DateOnly(newLuxonDate.year, newLuxonDate.month, newLuxonDate.day)
   }
+  /** Calendar arithmetic only. The zone is fixed to UTC so the viewer's zone and DST never move the day. */
+  addDays(days: number): DateOnly {
+    const next = DateTime.fromObject({ year: this.year, month: this.month, day: this.day }, { zone: "UTC" }).plus({
+      days,
+    })
+    return new DateOnly(next.year, next.month, next.day)
+  }
 }
 
 class TimeOfDay {

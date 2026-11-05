@@ -6,7 +6,7 @@ ShiftPatch has one route, `/`, and FR-1.8 gives each role one landing screen wit
 
 Table a screen renders: `./tables.md`. Write that mutates its data: `./forms.md`. Session: `./session.md`. Visual constraints: `./design-system.md`.
 
-No product screen exists yet: `app/page.tsx` is still the template. The examples below are the recipe to build them from, not a description of code in the repo.
+`app/page.tsx` contains the sign-in and nurse screens, plus the agency and admin shells. The examples below illustrate the pattern rather than reproducing those screens.
 
 ## Audit
 
@@ -80,7 +80,7 @@ function HomePage() {
 }
 ```
 
-Each role's screen sits inside the section shell (`.section-shell` and its parts in `app/globals.css`), whose sidebar rows jump between sections of that one screen. Sign-out is on every screen (FR-1.8).
+Each role's screen sits inside the section shell (the `@container/section-shell` frame and its parts, written as utilities in `app/page.tsx`), whose sidebar rows jump between sections of that one screen. Sign-out is on every screen (FR-1.8).
 
 ## 2. The screen state cell (`RemoteData` + `Future.fork`)
 
@@ -164,7 +164,7 @@ Only the screen's `useEffect` forks. The layer stays lazy until then.
 
 ## Examples
 
-Only `api.login` exists today, and `call` is POST-only (`./forms.md`). `api.listShifts`, `api.getCredential` and `api.getNurse` below are illustrative: add the real entries with the first screen that needs them, and derive their types with `s.Infer`. A nurse's screen also holds `timesheet-table` and the credential form, left out here for length.
+`api.listShifts`, `api.credential` and `api.timesheet` are `QueryEndpoint`s, read with `call(api.x, {})` (`./forms.md`). `api.getCredential` and `api.getNurse` below are illustrative: add the real entries with the first screen that needs them, and derive their types with `s.Infer`. A nurse's screen also holds `timesheet-table` and the credential form, left out here for length.
 
 ### The screen component: `RemoteData` cell + exhaustive match
 
