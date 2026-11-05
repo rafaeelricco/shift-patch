@@ -26,7 +26,15 @@ import { Duration, POSIX, type DateOnly } from "@lib/time"
 import { FACILITY_TIMEZONE, facilityToday } from "@lib/facility"
 import { Failed, Loading, NotAsked, Ready, type RemoteData } from "@lib/remote-data"
 import { BadStatus, call, upload, type FetchError } from "@api/request"
-import { api, type CredentialSummary, type Shift, type TimesheetRow, type User } from "@api/endpoints"
+import {
+  api,
+  type AdminShift,
+  type AuditEntry,
+  type CredentialSummary,
+  type Shift,
+  type TimesheetRow,
+  type User,
+} from "@api/endpoints"
 import { Button } from "@ui/button"
 import {
   DropdownMenu,
@@ -120,7 +128,7 @@ function LoginForm({ expired }: { expired: boolean }) {
           aria-label="Sign in"
         >
           <div className="flex justify-center">
-            <Image src="/brand/mark.svg" alt="" width={38} height={40} />
+            <Image src="/brand/mark.svg" alt="" width={38} height={41} />
           </div>
           <div className="flex flex-col gap-1 text-center">
             <h1 className="type-heading-md">Welcome back</h1>
@@ -151,7 +159,7 @@ function LoginForm({ expired }: { expired: boolean }) {
                 value={fields.password.values.value}
                 onChange={(event) => fields.password.values.onChange(event.target.value)}
                 disabled={submit.isLoading}
-                className={cn("shiftpatch-login-field", "pl-9 pr-10")}
+                className={cn("shiftpatch-login-field", "pr-10 pl-9")}
               />
               <HugeiconsIcon icon={SquareLock02Icon} className={"shiftpatch-login-icon"} aria-hidden="true" />
               <button
@@ -420,9 +428,7 @@ function usePoll<T>(
   }, [])
   const updateAndRefresh = useCallback(
     (update: (value: T) => T) => {
-      setPolled((prev) =>
-        prev.data instanceof Ready ? { ...prev, data: Ready(update(prev.data.value)) } : prev
-      )
+      setPolled((prev) => (prev.data instanceof Ready ? { ...prev, data: Ready(update(prev.data.value)) } : prev))
       refresh()
     },
     [refresh]
@@ -646,7 +652,7 @@ function NurseScreen({ user }: { user: User }) {
     credential.refresh()
   }
   // Each action reports its own outcome and refreshes, failed ones too.
-  const report = <T extends Shift,>(
+  const report = <T extends Shift>(
     task: Future<FetchError, T>,
     succeeded: string,
     offline: string,
@@ -968,7 +974,7 @@ function CredentialForm({ solid, banner, onUploaded }: { solid: boolean; banner:
   )
 }
 
-// ─── Agency and Admin (their phases fill these) ────────────────────────────────────────────────────────────────
+// ─── Agency (its phase fills this) ─────────────────────────────────────────────────────────────────────────────
 
 function AgencyScreen({ user }: { user: User }) {
   return (
@@ -978,10 +984,168 @@ function AgencyScreen({ user }: { user: User }) {
   )
 }
 
+// ─── Admin ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+const ADMIN_SECTIONS = [
+  { id: "coverage", label: "Shift coverage", icon: Calendar03Icon },
+  { id: "hours", label: "Scheduled hours", icon: Clock01Icon },
+  { id: "audit", label: "Audit log", icon: File01Icon },
+] as const
+
+const loadAdminShifts = (): Future<FetchError, ReadonlyArray<AdminShift>> =>
+  call(api.adminShifts, {}).map(({ shifts }) => shifts)
+const loadAuditLog = (): Future<FetchError, ReadonlyArray<AuditEntry>> =>
+  call(api.auditLog, {}).map(({ entries }) => entries)
+
+/** FR-1.11: coverage, scheduled hours and the audit log on one screen. Each section polls on its own (FR-5.4). */
 function AdminScreen({ user }: { user: User }) {
   return (
-    <SectionShell user={user} title="Coverage" sections={[]} banner={null}>
-      {null}
+    <SectionShell user={user} title="Coverage" sections={ADMIN_SECTIONS} banner={null}>
+      <div className={cn(riseIn, "flex flex-col gap-10 p-6")}>
+        <CoverageSection user={user} />
+        <TimesheetSection user={user} />
+        <AuditSection user={user} />
+      </div>
     </SectionShell>
+  )
+}
+
+const byShiftDate = (a: AdminShift, b: AdminShift): number =>
+  a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)
+const COVERAGE_COLUMNS = {
+  agency: new ColumnDef<AdminShift>({ label: "Agency", sortFun: (a, b) => a.agencyName.localeCompare(b.agencyName) }),
+  role: new ColumnDef<AdminShift>({
+    label: "Role",
+    sortFun: (a, b) => a.role.localeCompare(b.role),
+    className: "w-20",
+  }),
+  date: new ColumnDef<AdminShift>({ label: "Date", sortFun: byShiftDate, className: "w-32" }),
+  times: new ColumnDef<AdminShift>({ label: "Times", sortFun: null, className: "w-40" }),
+  nurse: new ColumnDef<AdminShift>({
+    label: "Covering nurse",
+    sortFun: (a, b) => (a.nurseName ?? "").localeCompare(b.nurseName ?? ""),
+  }),
+  status: new ColumnDef<AdminShift>({
+    label: "Status",
+    sortFun: (a, b) => a.status.localeCompare(b.status),
+    className: "w-28",
+  }),
+} satisfies ColumnsConfig<AdminShift>
+
+/** Design system AdminCoveragePattern: a stat card. While nothing has loaded, the figure is a dash, never 0. */
+function CoverageStat({ status, count }: { status: "open" | "filled"; count: number | null }) {
+  const label = status === "open" ? "Open shifts" : "Filled shifts"
+  return (
+    <div role="group" aria-label={label} className={cn(surfaceCard, "flex flex-col gap-1 p-4")}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="type-text-sm text-secondary">{label}</span>
+        <StatusBadge status={status} />
+      </div>
+      <p className="type-heading-xl text-primary tabular-nums">{count === null ? "—" : count.toLocaleString()}</p>
+      <p className="type-text-xs text-secondary">{status === "open" ? "Waiting for a nurse" : "Covered by a nurse"}</p>
+    </div>
+  )
+}
+
+/** FR-5.1 to FR-5.3: open and filled counts, then every shift with its covering nurse and API status. */
+function CoverageSection({ user }: { user: User }) {
+  const shifts = usePoll(loadAdminShifts, [user.id.value])
+  const [sort, setSort] = useState<SortState>({ sorting: "increasing", column: "date" })
+  const data = shifts.data
+  const all = data instanceof Ready ? data.value : null
+  const rows = all === null ? [] : [...all].sort(comparator(COVERAGE_COLUMNS, sort))
+  const count = (status: "open" | "filled") => (all === null ? null : all.filter((x) => x.status === status).length)
+  const emptyMessage =
+    data instanceof Failed ? <LoadFailed title="Couldn't load shifts" retry={shifts.refresh} />
+    : data instanceof Ready ?
+      <>
+        <p className="type-text-sm text-primary">No shifts yet</p>
+        <p className="mt-1 type-text-sm text-secondary">Shifts appear here once an agency posts them.</p>
+      </>
+    : <span className={cn("shiftpatch-page-shimmer", "type-text-sm")}>Loading shifts</span>
+  return (
+    <section id="coverage" aria-labelledby="coverage-title" className="flex scroll-mt-16 flex-col gap-3">
+      <SectionHead id="coverage" title="All shifts" polled={shifts} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <CoverageStat status="open" count={count("open")} />
+        <CoverageStat status="filled" count={count("filled")} />
+      </div>
+      <DataTable
+        data-testid="admin-dashboard-shift-table"
+        columns={COVERAGE_COLUMNS}
+        columnOrder={["agency", "role", "date", "times", "nurse", "status"]}
+        rows={rows.map((r) => ({
+          key: r.id,
+          value: r,
+          contents: {
+            agency: r.agencyName,
+            role: <span className="font-mono">{r.role}</span>,
+            date: <span className="tabular-nums">{r.date}</span>,
+            times: <span className="tabular-nums">{`${r.startTime} to ${r.endTime}`}</span>,
+            nurse: r.nurseName ?? "—",
+            status: <StatusBadge data-testid="admin-shift-status-badge" status={r.status} />,
+          },
+        }))}
+        emptyMessage={emptyMessage}
+        sort={sort}
+        onSortChange={setSort}
+      />
+    </section>
+  )
+}
+
+const AUDIT_COLUMNS = {
+  time: new ColumnDef<AuditEntry>({ label: "Time", sortFun: (a, b) => a.at.compare(b.at), className: "w-40" }),
+  actor: new ColumnDef<AuditEntry>({ label: "Actor", sortFun: null }),
+  action: new ColumnDef<AuditEntry>({ label: "Action", sortFun: null }),
+  record: new ColumnDef<AuditEntry>({ label: "Record", sortFun: null }),
+  reason: new ColumnDef<AuditEntry>({ label: "Reason", sortFun: null }),
+  previous: new ColumnDef<AuditEntry>({ label: "Previous nurse", sortFun: null }),
+} satisfies ColumnsConfig<AuditEntry>
+
+/** Facility-local `2026-10-03 07:00`, sans with tabular-nums. */
+function auditTime(at: POSIX): string {
+  const { date, time } = at.toLocalDateAndTime(FACILITY_TIMEZONE)
+  return `${date.pretty()} ${time.pretty().slice(0, 5)}`
+}
+
+/** FR-8.1 and FR-6.6: read-only, newest first. Reason and previous nurse are set by cancellations, otherwise a dash. */
+function AuditSection({ user }: { user: User }) {
+  const log = usePoll(loadAuditLog, [user.id.value])
+  const [sort, setSort] = useState<SortState>({ sorting: "decreasing", column: "time" })
+  const data = log.data
+  const rows = data instanceof Ready ? [...data.value].sort(comparator(AUDIT_COLUMNS, sort)) : []
+  const emptyMessage =
+    data instanceof Failed ? <LoadFailed title="Couldn't load the audit log" retry={log.refresh} />
+    : data instanceof Ready ?
+      <>
+        <p className="type-text-sm text-primary">No activity yet</p>
+        <p className="mt-1 type-text-sm text-secondary">Claims, cancellations and uploads appear here.</p>
+      </>
+    : <span className={cn("shiftpatch-page-shimmer", "type-text-sm")}>Loading the audit log</span>
+  return (
+    <section id="audit" aria-labelledby="audit-title" className="flex scroll-mt-16 flex-col gap-3">
+      <SectionHead id="audit" title="Audit log" polled={log} />
+      <DataTable
+        data-testid="audit-log-table"
+        columns={AUDIT_COLUMNS}
+        columnOrder={["time", "actor", "action", "record", "reason", "previous"]}
+        rows={rows.map((e) => ({
+          key: e.id,
+          value: e,
+          contents: {
+            time: <span className="tabular-nums">{auditTime(e.at)}</span>,
+            actor: e.actorName ?? (e.actorId === null ? "System" : <span className="font-mono">{e.actorId}</span>),
+            action: <span className="font-mono">{e.action}</span>,
+            record: <span className="font-mono">{e.recordId}</span>,
+            reason: e.reason === null ? "—" : <span className="font-mono">{e.reason}</span>,
+            previous: e.previousNurseName ?? e.previousNurseId ?? "—",
+          },
+        }))}
+        emptyMessage={emptyMessage}
+        sort={sort}
+        onSortChange={setSort}
+      />
+    </section>
   )
 }

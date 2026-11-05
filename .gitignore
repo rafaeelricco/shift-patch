@@ -32,8 +32,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# Ignore private environment files and track the template.
 .env*
+!/.env.example
 
 # vercel
 .vercel

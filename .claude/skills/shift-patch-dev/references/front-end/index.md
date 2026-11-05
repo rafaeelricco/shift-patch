@@ -4,18 +4,18 @@ Next.js 16 App Router at the repo root. Worked code lives in each leaf. Reviewer
 
 ## Routing table
 
-| Task or signal                                                                 | Read                     |
-| ------------------------------------------------------------------------------ | ------------------------ |
-| Design tokens, visual language, component specs, shared primitives, voice      | `design-system.md`       |
-| Tailwind utilities, token files, on-demand class lookup, the `bg-primary` trap | `tailwind.md`            |
-| Reusable class names, or the `cn()` class-merge helper                         | code: see Code locations |
-| Forms and typed API writes (`useForm`, `FormInput`, `call`, `RemoteData`)      | `forms.md`               |
-| Session: `Session` union, `sid` cookie, `localStorage` cache, `useSession`, sign-out    | `session.md`             |
-| `DataTable`: columns, rows, sorting, pagination, row actions                   | `tables.md`              |
-| Page skeleton: role gate, `RemoteData` cell, composed `Future` reads           | `pages.md`               |
-| Fonts, logo and other brand assets                                             | `design-system.md`       |
-| Design system visual reference                                                 | `design-system.md`       |
-| Timestamp, date or duration field, constant or helper                          | `../time.md`             |
+| Task or signal                                                                       | Read                     |
+| ------------------------------------------------------------------------------------ | ------------------------ |
+| Design tokens, visual language, component specs, shared primitives, voice            | `design-system.md`       |
+| Tailwind utilities, token files, on-demand class lookup, the `bg-primary` trap       | `tailwind.md`            |
+| Reusable class names, or the `cn()` class-merge helper                               | code: see Code locations |
+| Forms and typed API writes (`useForm`, `FormInput`, `call`, `RemoteData`)            | `forms.md`               |
+| Session: `Session` union, `sid` cookie, `localStorage` cache, `useSession`, sign-out | `session.md`             |
+| `DataTable`: columns, rows, sorting, pagination, row actions                         | `tables.md`              |
+| Page skeleton: role gate, `RemoteData` cell, composed `Future` reads                 | `pages.md`               |
+| Fonts, logo and other brand assets                                                   | `design-system.md`       |
+| Design system visual reference                                                       | `design-system.md`       |
+| Timestamp, date or duration field, constant or helper                                | `../time.md`             |
 
 ## Workflow
 

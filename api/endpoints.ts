@@ -5,6 +5,8 @@ export {
   schema_cancel_reason,
   type User,
   type Shift,
+  type AdminShift,
+  type AuditEntry,
   type CancelReason,
   type CredentialSummary,
   type TimesheetRow,
@@ -17,7 +19,7 @@ import * as s from "@lib/json/schema"
 import { Id } from "@lib/id"
 import { schema_actor } from "@lib/actor"
 import { CommandEndpoint, PlainEndpoint, QueryEndpoint, UploadEndpoint } from "@lib/endpoint"
-import { DateOnly } from "@lib/time"
+import { DateOnly, POSIX } from "@lib/time"
 
 // The login reply's user, as FR-1.1 sends it.
 const schema_user = s.object({
@@ -73,6 +75,25 @@ const schema_timesheet_row = s.object({
 })
 type TimesheetRow = s.Infer<typeof schema_timesheet_row>
 
+// FR-5.1: the admin's coverage row, the full shift shape plus who covers it. Admin-only, so GET /api/shifts keeps
+// its exact keys (NFR-1).
+const schema_admin_shift = s.object({ ...shift_fields, nurseName: s.nullable(s.string) })
+type AdminShift = s.Infer<typeof schema_admin_shift>
+
+// FR-8.1 and FR-6.6: one audit_log row with its names resolved. The actor is null for the operator seed reset.
+const schema_audit_entry = s.object({
+  id: s.string,
+  at: POSIX.schema,
+  actorId: s.nullable(s.string),
+  actorName: s.nullable(s.string),
+  action: s.string,
+  recordId: s.string,
+  reason: s.nullable(s.string),
+  previousNurseId: s.nullable(s.string),
+  previousNurseName: s.nullable(s.string),
+})
+type AuditEntry = s.Infer<typeof schema_audit_entry>
+
 type NoParams = Record<string, never>
 type ShiftParams = { id: string }
 const shiftPath =
@@ -111,5 +132,13 @@ const api = {
   timesheet: new QueryEndpoint({
     path: (_: NoParams) => "/api/timesheet",
     response: s.object({ rows: s.array(schema_timesheet_row) }),
+  }),
+  adminShifts: new QueryEndpoint({
+    path: (_: NoParams) => "/api/admin/shifts",
+    response: s.object({ shifts: s.array(schema_admin_shift) }),
+  }),
+  auditLog: new QueryEndpoint({
+    path: (_: NoParams) => "/api/admin/audit",
+    response: s.object({ entries: s.array(schema_audit_entry) }),
   }),
 }
