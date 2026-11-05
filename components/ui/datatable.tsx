@@ -57,7 +57,7 @@ const cellVariants = cva("", {
 const rowVariants = cva("", {
   variants: {
     interactive: {
-      true: "cursor-pointer outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+      true: "cursor-pointer outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring focus-visible:outline-solid",
     },
   },
 })
