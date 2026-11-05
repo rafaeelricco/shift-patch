@@ -24,11 +24,11 @@ Removed IDs: none.
 
 ### Status
 
-The Foundation and Nurse groups are built. Admin, Agency and Operator are next.
+The Foundation, Nurse and Admin core groups are built. Agency and Operator are next; admin credential review (FR-7.6) is still open.
 
 Ticked items are covered by automated tests. Validate the current revision with `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, and `make e2e`.
 
-Specs: `tests/e2e/foundation/{fields,login,session,seed}.spec.ts` and `tests/e2e/nurse/{access,browse,claim,cancel,credential,timesheet}.spec.ts`. Unit tests: `tests/{password,token,request,time,facility,session}.test.ts` and `tests/page.test.tsx`.
+Specs: `tests/e2e/foundation/{fields,login,session,seed}.spec.ts` and `tests/e2e/nurse/{access,browse,claim,cancel,credential,timesheet}.spec.ts` and `tests/e2e/admin/{dashboard,audit}.spec.ts`. Unit tests: `tests/{password,token,request,time,facility,session}.test.ts` and `tests/page.test.tsx`.
 
 What exists:
 
@@ -52,8 +52,7 @@ What exists:
 
 Built but left unticked:
 
-- **FR-1.8**: the login form, landing and sign-out work for all roles. The agency and admin screens are still empty shells, so their test IDs (FR-1.10, FR-1.11) are missing.
-- **FR-6.6**: the cancel route stores the reason and `previous_nurse_id` on the audit entry. The admin audit screen that shows them is not built.
+- **FR-1.8**: the login form, landing and sign-out work for all roles. The agency screen is still an empty shell, so its test IDs (FR-1.10) are missing.
 - **FR-6.7, FR-6.8**: the nurse halves are tested. The agency halves (cancel button and reason chooser) are not built.
 - **FR-8.2**: claim, blocked claim, cancel, upload and seed reset each write one entry, and the tests check them. Posting, approval and rejection come in later groups.
 - **FR-8.3**: every route writes its entry on the same transaction as its change. Only a primitive-level test proves the rollback, plus the blocked-claim route test.
@@ -164,19 +163,19 @@ Relies on: FR-3.1 (all shifts), FR-6.1 to FR-6.4 (cancel through the API only), 
 
 #### Landing screen · core
 
-- [ ] FR-1.11 The admin landing screen shows `admin-dashboard-shift-table`, `admin-shift-status-badge`, `audit-log-table` and `timesheet-table`. (decision)
+- [x] FR-1.11 The admin landing screen shows `admin-dashboard-shift-table`, `admin-shift-status-badge`, `audit-log-table` and `timesheet-table`. (decision)
 
 #### Live dashboard and basic reporting (FR-5) · core
 
-- [ ] FR-5.1 `admin-dashboard-shift-table` lists every shift with agency, role, date, times and the covering nurse's name.
-- [ ] FR-5.2 Each row has an `admin-shift-status-badge` showing the shift's API status, `open` or `filled`. See FR-6.9 and assumption A4. (decision)
-- [ ] FR-5.3 The dashboard shows the number of open shifts and filled shifts.
-- [ ] FR-5.4 A change made elsewhere appears within 5 seconds without a manual reload. (decision)
-- [ ] FR-5.5 Admin-only data and screens return 403 or are unavailable to nurses and agencies.
+- [x] FR-5.1 `admin-dashboard-shift-table` lists every shift with agency, role, date, times and the covering nurse's name.
+- [x] FR-5.2 Each row has an `admin-shift-status-badge` showing the shift's API status, `open` or `filled`. See FR-6.9 and assumption A4. (decision)
+- [x] FR-5.3 The dashboard shows the number of open shifts and filled shifts.
+- [x] FR-5.4 A change made elsewhere appears within 5 seconds without a manual reload. (decision)
+- [x] FR-5.5 Admin-only data and screens return 403 or are unavailable to nurses and agencies.
 
 #### Cancellation record (FR-6) · core
 
-- [ ] FR-6.6 The reason and previous nurse are stored and visible to the admin in the audit log.
+- [x] FR-6.6 The reason and previous nurse are stored and visible to the admin in the audit log.
 
 #### Credential review (FR-7) · supporting
 
@@ -184,7 +183,7 @@ Relies on: FR-3.1 (all shifts), FR-6.1 to FR-6.4 (cancel through the API only), 
 
 #### Audit log screen (FR-8) · supporting
 
-- [ ] FR-8.1 `audit-log-table` is visible only to the admin. It lists actor, action, affected record, time and any cancellation reason, newest first. (decision)
+- [x] FR-8.1 `audit-log-table` is visible only to the admin. It lists actor, action, affected record, time and any cancellation reason, newest first. (decision)
 
 ### Agency
 
