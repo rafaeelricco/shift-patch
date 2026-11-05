@@ -21,6 +21,8 @@
 
 export { ColumnDef, DataTable, DataTablePagination, comparator, type ColumnsConfig, type SortState }
 
+import { cva, type VariantProps } from "class-variance-authority"
+
 import { type Key, type KeyboardEvent, type ReactNode } from "react"
 
 import { ArrowDown01Icon, ArrowUpDownIcon, SortingDownIcon, SortingUpIcon } from "@hugeicons/core-free-icons"
@@ -48,13 +50,28 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@ui/table"
 import { cn } from "@lib/utils"
 
+const cellVariants = cva("", {
+  variants: { align: { left: "", right: "text-right tabular-nums" } },
+})
+
+const rowVariants = cva("", {
+  variants: {
+    interactive: {
+      true: "cursor-pointer outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+    },
+  },
+})
+
+type CellVariants = VariantProps<typeof cellVariants>
+type RowVariants = VariantProps<typeof rowVariants>
+
 type SortFun<T> = (a: T, b: T) => number
 
 /** @property sortFun - `null` marks a column unsortable: selection and action columns. */
 type ColumnSpec<T> = {
   readonly label: ReactNode
   readonly sortFun: SortFun<T> | null
-  readonly align?: "left" | "right"
+  readonly align?: Exclude<CellVariants["align"], null>
   readonly className?: string
 }
 
@@ -136,12 +153,12 @@ function SortableHeader(props: {
 }): ReactNode {
   if (props.state === null) return props.label
   return (
-    <div className="data-table-sort-head">
+    <div className="inline-flex items-center gap-2">
       {props.label}
       <button
         type="button"
         aria-label="Toggle sort"
-        className="data-table-sort"
+        className="-m-1 inline-flex shrink-0 cursor-pointer rounded-sm p-1 text-tertiary transition-[color] duration-(--transition-duration-basic) ease-basic hover:text-primary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring data-active:text-primary [&>svg]:size-icon-sm"
         data-active={props.state === "none" ? undefined : true}
         onClick={props.onSort}
       >
@@ -170,7 +187,7 @@ function DataTable<T, C extends ColumnsConfig<T>>(props: DataTableProps<T, C>) {
   }
 
   return (
-    <div className="data-table-frame">
+    <div className="overflow-x-auto rounded-2xl bg-card shadow-hairline">
       <Table data-testid={props["data-testid"]}>
         <TableHeader>
           <TableRow>
@@ -187,7 +204,7 @@ function DataTable<T, C extends ColumnsConfig<T>>(props: DataTableProps<T, C>) {
                   key={String(id)}
                   scope="col"
                   aria-sort={ariaSort(state)}
-                  className={cn(column.align === "right" && "is-numeric", column.className)}
+                  className={cn(cellVariants({ align: column.align }), column.className)}
                 >
                   <SortableHeader
                     label={column.label}
@@ -201,8 +218,8 @@ function DataTable<T, C extends ColumnsConfig<T>>(props: DataTableProps<T, C>) {
         </TableHeader>
         <TableBody>
           {rows.length === 0 ?
-            <TableRow className="data-table-empty">
-              <TableCell colSpan={columnOrder.length} className="h-32">
+            <TableRow className="bg-transparent!">
+              <TableCell colSpan={columnOrder.length} className="h-32 text-center whitespace-normal text-secondary">
                 {emptyMessage}
               </TableCell>
             </TableRow>
@@ -214,10 +231,13 @@ function DataTable<T, C extends ColumnsConfig<T>>(props: DataTableProps<T, C>) {
                 data-state={row.selected === true ? "selected" : undefined}
                 onClick={() => row.onClick?.(row.value)}
                 onKeyDown={(event) => onRowKeyDown(event, row)}
-                className={cn(row.onClick !== undefined && "data-table-row-action", row.className)}
+                className={cn(
+                  rowVariants({ interactive: row.onClick !== undefined } satisfies RowVariants),
+                  row.className
+                )}
               >
                 {columnOrder.map((id) => (
-                  <TableCell key={String(id)} className={cn(columns[id]?.values.align === "right" && "is-numeric")}>
+                  <TableCell key={String(id)} className={cellVariants({ align: columns[id]?.values.align })}>
                     {row.contents[id]}
                   </TableCell>
                 ))}

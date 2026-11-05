@@ -21,6 +21,8 @@ Rules a reviewer can check on a diff. Rationale and examples for most live in `C
 
 ## UI
 
+- Component styles are Tailwind utilities in the component's own file. `app/globals.css` holds only the design system: the `hover` variant, `@theme` names, `:root` tokens, `type-*` utilities, `@layer base` and `@keyframes`. No `@layer components`, no component class names.
+- Classes that switch on a prop are declared with `cva()` and typed with `VariantProps`.
 - Scrollable regions use `ScrollArea` from `@ui/scroll-area`, not raw `overflow-auto` containers.
 - Radius uses the design-system steps: 4 file button, 8 inputs, 12 banners, 16 cards and tables, 24 large frames, full for buttons and badges. A new radius lands on an existing step.
 - Components use semantic color tokens, never the primitive ramps.

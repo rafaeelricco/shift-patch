@@ -59,7 +59,12 @@ function HoldButton({
     >
       <span
         aria-hidden="true"
-        className="hold-button-fill"
+        className={cn(
+          "absolute inset-0 bg-[color-mix(in_oklab,currentColor_20%,transparent)] transition-[clip-path] duration-(--transition-duration-basic) ease-basic [clip-path:inset(0_100%_0_0)]",
+          "data-holding:duration-(--hold-duration) data-holding:ease-linear data-holding:[clip-path:inset(0)]",
+          // Reduced motion: the fill fades in over the hold instead of wiping across.
+          "motion-reduce:opacity-0 motion-reduce:transition-opacity motion-reduce:[clip-path:none] motion-reduce:data-holding:opacity-100 motion-reduce:data-holding:[clip-path:none]"
+        )}
         data-holding={holding || undefined}
         style={{ "--hold-duration": `${holdMs}ms` } as React.CSSProperties}
       />

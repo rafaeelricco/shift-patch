@@ -76,7 +76,7 @@ SPEC NFR-1 requires all 15 test IDs from `docs/ShiftPatch-Technical-Spec.md`, as
 - Hooks: `hooks/use-*.ts`, imported as `@hooks/<name>`. Shared non-UI code: flat in `lib/<name>.ts`, imported as `@lib/<name>`. The client's server access: `api/endpoints.ts` and `api/request.ts`.
 - A page file holds the page, its children and its helpers, even when long. Code with one importer is written in that importer. A function or component imported by two or more files gets one flat dedicated file, never a domain subfolder.
 - Page files start with `export default <Page>`, other files with their `export { … }` list, both before the imports. Only a file header comment or a file-level directive (`"use client"`) sits above them. Add `"use client"` to any file using state, effects, event handlers or Base UI's interactive parts.
-- `cn()`: `lib/utils.ts` (`@lib/utils`). Variants are design-system CSS classes in `@layer components`, picked by a lookup: `buttonVariants` in `components/ui/button.tsx`, `STATUS_INTENT` in `components/ui/status-badge.tsx`.
+- `cn()`: `lib/utils.ts` (`@lib/utils`). Variants are `cva()` definitions: `buttonVariants` in `components/ui/button.tsx`, `badgeVariants` in `components/ui/status-badge.tsx`, with `STATUS_INTENT` mapping a status to its intent.
 - Session: `lib/session.ts` (`@lib/session`), read through `hooks/use-session.ts`.
 - Tests: `tests/`. `lib/` keeps its own `*.test.ts` beside the code.
 

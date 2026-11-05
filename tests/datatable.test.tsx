@@ -181,8 +181,8 @@ describe("DataTable", () => {
 
   it("right-aligns a numeric column's header and cells", () => {
     render(<ShiftsTable shifts={SHIFTS} />)
-    expect(screen.getByRole("columnheader", { name: /Hours/ }).classList.contains("is-numeric")).toBe(true)
-    expect(screen.getByRole("cell", { name: (1200).toLocaleString() }).classList.contains("is-numeric")).toBe(true)
-    expect(screen.getByRole("cell", { name: "Birch" }).classList.contains("is-numeric")).toBe(false)
+    expect(screen.getByRole("columnheader", { name: /Hours/ }).classList).toContain("text-right")
+    expect(screen.getByRole("cell", { name: (1200).toLocaleString() }).classList).toContain("text-right")
+    expect(screen.getByRole("cell", { name: "Birch" }).classList).not.toContain("text-right")
   })
 })
