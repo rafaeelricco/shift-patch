@@ -27,7 +27,9 @@ import {
   api,
   type AdminShift,
   type AuditEntry,
+  type CancelReason,
   type CredentialSummary,
+  type NewShift,
   type Shift,
   type TimesheetRow,
   type User,
@@ -41,7 +43,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@ui/dropdown-menu"
-import { FormInput, TextInput, useForm } from "@ui/forms"
+import { FormInput, SelectInput, TextInput, useForm } from "@ui/forms"
 import { NotificationBanner, type Notice } from "@ui/notification-banner"
 import { StateMessage } from "@ui/state-message"
 import { Input } from "@ui/input"
@@ -576,6 +578,11 @@ const TIMESHEET_COLUMNS = {
  */
 function TimesheetSection({ user }: { user: User }) {
   const timesheet = usePoll(loadTimesheet, [user.id.value])
+  return <TimesheetTable timesheet={timesheet} />
+}
+
+/** The section itself, for a screen that also reads the rows (the agency names its covering nurses from them). */
+function TimesheetTable({ timesheet }: { timesheet: Polled<ReadonlyArray<TimesheetRow>> }) {
   const [sort, setSort] = useState<SortState>({ sorting: "decreasing", column: "date" })
   const data = timesheet.data
   const rows = data instanceof Ready ? [...data.value].sort(comparator(TIMESHEET_COLUMNS, sort)) : []
@@ -966,13 +973,271 @@ function CredentialForm({ solid, banner, onUploaded }: { solid: boolean; banner:
   )
 }
 
-// ─── Agency (its phase fills this) ─────────────────────────────────────────────────────────────────────────────
+// ─── Agency ────────────────────────────────────────────────────────────────────────────────────────────────────
 
+const SHIFT_ROLES = ["RN", "LPN"] as const
+const CANCEL_REASONS = [
+  { value: "advance", label: "Cancelled in advance" },
+  { value: "no-show", label: "No-show" },
+] as const satisfies ReadonlyArray<{ value: CancelReason; label: string }>
+
+/** FR-1.10: posting, the agency's own shifts with cancel, and scheduled hours on one screen. Each section polls. */
 function AgencyScreen({ user }: { user: User }) {
+  const agencyId = user.id.value
+  const shifts = usePoll(() => call(api.agencyShifts, { agencyId }).map(({ shifts }) => shifts), [agencyId])
+  // FR-2.11's covering nurse: a Shift carries only `claimedBy`, and the agency-scoped timesheet names it (FR-9.3).
+  const covers = usePoll(loadTimesheet, [agencyId])
+  const banner = useBanner()
+  const { run } = useSingleFlight()
+  const [posting, setPosting] = useState(false)
+  // While a post is in flight the form must stay mounted, or its unmount would abort the request unreported (FR-11.4).
+  const [sending, setSending] = useState(false)
+  const refreshAll = (): void => {
+    shifts.refresh()
+    covers.refresh()
+  }
+  const posted = (shift: Shift): void => {
+    setPosting(false)
+    shifts.updateAndRefresh((rows) => [...rows, shift])
+    focusLater('[data-testid="agency-post-shift-button"]')
+  }
+  // FR-6.7 and FR-6.8: one click, with the reason chosen beside the button. No confirmation step.
+  const cancel = (shift: Shift, reason: CancelReason): void =>
+    run(`cancel:${shift.id}`, () => {
+      banner.clear()
+      return call(api.cancelShift, { id: shift.id }, { reason }).bimap(
+        (error) => {
+          banner.fail(error, "Couldn't cancel shift, try again")
+          refreshAll()
+          return error
+        },
+        ({ cancellation: _cancellation, ...updated }) => {
+          shifts.updateAndRefresh((rows) => rows.map((row) => (row.id === updated.id ? updated : row)))
+          covers.refresh()
+          banner.succeed("Shift cancelled, now open")
+          focusLater("#agency-shifts-title") // the card loses its button as it reopens
+          return updated
+        }
+      )
+    })
+  const names: ReadonlyMap<string, string> = new Map(
+    covers.data instanceof Ready ? covers.data.value.map((row) => [row.shiftId, row.nurseName] as const) : []
+  )
   return (
-    <SectionShell user={user} title="Your shifts" banner={null}>
-      {null}
+    <SectionShell user={user} title="Your shifts" banner={<BannerSlot notice={banner.notice} />}>
+      <div className={cn(riseIn, "flex flex-col gap-10 p-6")}>
+        <AgencyShifts
+          polled={shifts}
+          names={names}
+          posting={posting}
+          sending={sending}
+          onTogglePost={() => setPosting((open) => !open)}
+          onSending={setSending}
+          banner={banner}
+          onPosted={posted}
+          onCancel={cancel}
+        />
+        <TimesheetTable timesheet={covers} />
+      </div>
     </SectionShell>
+  )
+}
+
+function AgencyShifts({
+  polled,
+  names,
+  posting,
+  sending,
+  onTogglePost,
+  onSending,
+  banner,
+  onPosted,
+  onCancel,
+}: {
+  polled: Polled<ReadonlyArray<Shift>>
+  names: ReadonlyMap<string, string>
+  posting: boolean
+  sending: boolean
+  onTogglePost: () => void
+  onSending: (sending: boolean) => void
+  banner: Banner
+  onPosted: (shift: Shift) => void
+  onCancel: (shift: Shift, reason: CancelReason) => void
+}) {
+  const data = polled.data
+  const rows =
+    data instanceof Ready ?
+      [...data.value].sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+    : []
+  return (
+    <section id="agency-shifts" aria-labelledby="agency-shifts-title" className="flex scroll-mt-16 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SectionHead id="agency-shifts" title="Your agency's shifts" polled={polled} />
+        {/* One solid action per view: this button while closed, the form's submit while open. */}
+        <Button
+          variant={posting ? "outline-primary" : "solid-primary"}
+          data-testid="agency-post-shift-button"
+          aria-expanded={posting}
+          aria-controls="post-shift"
+          disabled={sending}
+          onClick={onTogglePost}
+        >
+          Post a shift
+        </Button>
+      </div>
+      {/* PostShiftPattern: opens inline, never in a modal. Closing unmounts it, so it reopens on its defaults. */}
+      {posting ?
+        <PostShiftForm banner={banner} onSending={onSending} onPosted={onPosted} />
+      : null}
+      {data instanceof Ready ?
+        rows.length === 0 ?
+          <StateMessage
+            state={{ kind: "empty", title: "No shifts posted yet", body: "Shifts you post appear here." }}
+          />
+        : <div className="flex flex-col gap-3">
+            {rows.map((shift) =>
+              shift.claimedBy === null ?
+                <ShiftCard key={shift.id} shift={shift} detail="Waiting for a nurse" />
+              : <AgencyFilledCard
+                  key={shift.id}
+                  shift={shift}
+                  nurse={names.get(shift.id) ?? null}
+                  onCancel={onCancel}
+                />
+            )}
+          </div>
+
+      : data instanceof Failed ?
+        <LoadFailed title="Couldn't load your shifts" retry={polled.refresh} />
+      : <StateMessage state={{ kind: "loading", label: "Loading your shifts" }} />}
+    </section>
+  )
+}
+
+/** AgencyCancelPattern. Each card owns its form, so its reason mounts with it and defaults to advance (FR-6.8). */
+function AgencyFilledCard({
+  shift,
+  nurse,
+  onCancel,
+}: {
+  shift: Shift
+  nurse: string | null // null until the timesheet names a freshly claimed shift; an ID never goes into prose
+  onCancel: (shift: Shift, reason: CancelReason) => void
+}) {
+  const { fields, values } = useForm({
+    fields: {
+      reason: new SelectInput({
+        label: "Reason",
+        items: CANCEL_REASONS,
+        defaultValue: "advance",
+        getValue: (reason) => reason.value,
+        getLabel: (reason) => reason.label,
+      }),
+    },
+  })
+  const reason = CANCEL_REASONS.find((one) => one.value === values.reason)?.value ?? "advance"
+  return (
+    <ShiftCard
+      shift={shift}
+      detail={nurse === null ? "Covered by a nurse" : `Covered by ${nurse}`}
+      action={
+        <>
+          <FormInput config={fields.reason} />
+          <Button variant="outline-danger" data-testid="shift-cancel-button" onClick={() => onCancel(shift, reason)}>
+            Cancel shift
+          </Button>
+        </>
+      }
+    />
+  )
+}
+
+/** PostShiftPattern after forms.md "post a shift": valid defaults (FR-2.10); an earlier end is overnight (FR-2.6). */
+function PostShiftForm({
+  banner,
+  onSending,
+  onPosted,
+}: {
+  banner: Banner
+  onSending: (sending: boolean) => void
+  onPosted: (shift: Shift) => void
+}) {
+  const [submit, setSubmit] = useState<RemoteData<FetchError, never>>(NotAsked())
+  const cancel = useRef<Cancel>(() => {})
+  useEffect(() => () => cancel.current(), [])
+
+  const { fields, onSubmit } = useForm({
+    fields: {
+      role: new SelectInput({
+        label: "Role",
+        items: SHIFT_ROLES,
+        defaultValue: "RN",
+        getValue: (role) => role,
+        getLabel: (role) => role,
+      }),
+      date: new TextInput({ label: "Date", type: "date", defaultValue: facilityToday().pretty() }),
+      startTime: new TextInput({ label: "Start", type: "time", defaultValue: "07:00" }),
+      endTime: new TextInput({
+        label: "End",
+        type: "time",
+        defaultValue: "19:00",
+        description: "Earlier than Start means overnight",
+      }),
+    },
+    validate: (values) => ({
+      role: values.role === null ? "Pick a role" : null,
+      date: values.date === "" ? "Pick a date" : null,
+      startTime: values.startTime === "" ? "Enter a start time" : null,
+      endTime:
+        values.endTime === "" ? "Enter an end time"
+        : values.startTime === values.endTime ? "Start and end must differ"
+        : null,
+    }),
+  })
+
+  const send = (event: FormEvent) =>
+    void onSubmit(({ role, date, startTime, endTime }) => {
+      if (submit.isLoading) return
+      const shiftRole = SHIFT_ROLES.find((one) => one === role)
+      if (shiftRole === undefined) return // validate has rejected this; the find narrows the type
+      // A native time input may report seconds; the API takes HH:mm (time.md).
+      const body: NewShift = { role: shiftRole, date, startTime: startTime.slice(0, 5), endTime: endTime.slice(0, 5) }
+      banner.clear()
+      setSubmit(Loading())
+      onSending(true)
+      cancel.current = call(api.postShift, body).fork(
+        (error) => {
+          setSubmit(NotAsked())
+          onSending(false)
+          banner.fail(error, "Couldn't post shift, try again") // the values stay
+        },
+        (shift) => {
+          setSubmit(NotAsked())
+          onSending(false)
+          banner.succeed("Shift posted")
+          onPosted(shift)
+        }
+      )
+    })(event)
+
+  return (
+    <form
+      id="post-shift"
+      noValidate
+      onSubmit={send}
+      className={cn(riseIn, surfaceCard, "flex flex-col gap-4 p-4")}
+      aria-label="Post a shift"
+    >
+      <FormInput config={fields.role} disabled={submit.isLoading} />
+      <FormInput config={fields.date} disabled={submit.isLoading} />
+      <div className="grid grid-cols-2 gap-4">
+        <FormInput config={fields.startTime} disabled={submit.isLoading} />
+        <FormInput config={fields.endTime} disabled={submit.isLoading} />
+      </div>
+      <Button type="submit" className="w-full" loading={submit.isLoading} data-testid="agency-post-shift-submit-button">
+        Post shift
+      </Button>
+    </form>
   )
 }
 
