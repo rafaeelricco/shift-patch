@@ -1418,6 +1418,162 @@
     transform: translateX(var(--motion-distance, 160px));
   }
 
+  /* Sign-in: a centered card on the muted ground. The 24px card keeps the
+     40px pill (20px curve) inside its parent's radius. */
+  .sign-in-ground {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    background: var(--app-color-background-elevated-secondary);
+  }
+
+  .sign-in-card {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+    border-radius: var(--radius-3xl);
+    background: var(--color-surface-card);
+    box-shadow: var(--shadow-hairline), var(--shadow-card);
+  }
+
+  /* Section shell: an inset sidebar that jumps within the one landing screen. */
+  .section-shell {
+    container: section-shell / inline-size;
+    --outer-radius: var(--radius-2xl);
+    --inset: 8px;
+    display: flex;
+    min-height: 0;
+    height: 100%;
+    background: var(--app-color-background-elevated-secondary);
+  }
+
+  .section-side {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 8px;
+    width: 288px;
+    padding: var(--inset);
+  }
+
+  .section-nav {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .section-marker,
+  .section-hover {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 36px;
+    border-radius: calc(var(--outer-radius) - var(--inset));
+    pointer-events: none;
+  }
+
+  .section-marker {
+    background: var(--menu-item-background-color);
+    transition: transform var(--transition-duration-relaxed) var(--cubic-move);
+  }
+
+  .section-hover {
+    opacity: 0;
+    background: var(--color-background-primary-ghost-hover);
+    transition:
+      transform var(--transition-duration-basic) var(--cubic-move),
+      opacity var(--transition-duration-basic) ease;
+  }
+
+  .section-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: calc(var(--outer-radius) - var(--inset));
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--color-text-secondary);
+    text-align: left;
+    cursor: pointer;
+    transition: color var(--transition-duration-basic) ease;
+  }
+
+  .section-row[aria-current="location"] {
+    font-weight: 500;
+    color: var(--color-text-primary);
+  }
+
+  .section-row:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: -2px;
+  }
+
+  .section-main {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    margin: var(--inset) var(--inset) var(--inset) 0;
+    overflow-y: auto;
+    border-radius: calc(var(--outer-radius) - var(--inset));
+    background: var(--color-surface);
+    box-shadow: var(--shadow-hairline), var(--shadow-card);
+  }
+
+  .section-top {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 52px;
+    padding: 0 24px;
+    background: var(--color-surface);
+    border-bottom: 0.5px solid var(--color-border);
+  }
+
+  .section-compact {
+    display: none;
+  }
+
+  /* One entrance: the sign-in card, the post form, sections after sign-in. */
+  .rise-in {
+    animation: rise-in var(--transition-duration-relaxed) var(--cubic-enter) both;
+  }
+
+  @container section-shell (max-width: 999px) {
+    .section-side,
+    .section-wide {
+      display: none;
+    }
+
+    .section-main {
+      margin: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .section-compact {
+      display: flex;
+    }
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .section-row:hover {
+      color: var(--color-text-primary);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .btn::before,
     .btn:active::before {
@@ -1434,6 +1590,18 @@
 
     .banner {
       animation-name: fade-in;
+    }
+
+    .rise-in {
+      animation-name: fade-in;
+    }
+
+    .section-marker {
+      transition-duration: 0ms;
+    }
+
+    .section-hover {
+      transition-property: opacity;
     }
 
     .shimmer {
@@ -1469,6 +1637,13 @@
 @keyframes fade-in {
   from {
     opacity: 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
 }
 

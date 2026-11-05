@@ -387,7 +387,7 @@ const RADII = [
   { token: "--radius-lg", px: "8", use: "Inputs" },
   { token: "--radius-xl", px: "12", use: "Banners, swatches" },
   { token: "--radius-2xl", px: "16", use: "Cards, tables" },
-  { token: "--radius-3xl", px: "24", use: "Large frames" },
+  { token: "--radius-3xl", px: "24", use: "Large frames, the sign-in card" },
   { token: "--radius-full", px: "9999", use: "Buttons, badges" },
 ] as const
 
@@ -417,7 +417,7 @@ const MOTION = [
     duration: "var(--transition-duration-relaxed)",
     curve: "var(--cubic-enter)",
     spec: "300ms",
-    use: "The banner arriving",
+    use: "The banner, sign-in card and post form arriving",
   },
 ] as const
 
@@ -426,7 +426,7 @@ export function LayoutSection() {
     <Section
       id="layout"
       title="Layout"
-      lede="A 4px base, soft corners and very quiet depth. Each role gets one landing screen, so there is no app shell to design around."
+      lede="A 4px base, soft corners and very quiet depth. Each role gets one landing screen, inside the section shell in Patterns."
     >
       <Specimen title="Spacing">
         <ul className="flex flex-col gap-2">
@@ -683,14 +683,20 @@ const AUDIT_ROWS: ReadonlyArray<AuditRow> = [
   { id: "a1", time: "2026-10-01 09:05", actor: "Maria Lopez", action: "Claimed shift", record: "shift-2", reason: "—" },
 ]
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, status, caption }: { label: string; value: number; status: Status; caption: string }) {
   return (
-    <div className="surface-card p-4">
-      <p className="type-text-sm text-secondary">{label}</p>
+    <div className="surface-card flex flex-col gap-2 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="type-text-sm text-secondary">{label}</p>
+        <StatusBadge status={status} />
+      </div>
       <p className="type-heading-xl tabular-nums">{value.toLocaleString()}</p>
+      <p className="type-text-xs text-secondary">{caption}</p>
     </div>
   )
 }
+
+const SECTION_ROWS = ["Shift coverage", "Credentials to review", "Scheduled hours", "Audit log"] as const
 
 export function PatternsSection() {
   return (
@@ -700,14 +706,27 @@ export function PatternsSection() {
       lede="How the pieces combine on each role's one landing screen, using the seeded sample data. The audit rows are illustrative."
     >
       <div className="grid gap-6 lg:grid-cols-2">
-        <Specimen title="Sign in" note="What a visitor with no session sees first.">
-          <div className="flex flex-col gap-4">
-            <TextField label="Email" type="email" placeholder="alex.kim@example.com" autoComplete="off" />
-            <TextField label="Password" type="password" autoComplete="off" />
-            <NotificationBanner notice={{ kind: "error", message: "Invalid email or password" }} />
-            <Button size="xl" className="w-full">
-              Sign in
-            </Button>
+        <Specimen title="Sign in" note="What a visitor with no session sees first: a 24px card on the muted ground.">
+          <div className="sign-in-ground rounded-2xl">
+            <div className="flex w-full max-w-sm flex-col gap-6">
+              <div className="flex items-center justify-center gap-2 type-text-sm font-semibold text-primary">
+                <Image src="/brand/mark.svg" alt="" width={20} height={21} />
+                ShiftPatch
+              </div>
+              <div className="sign-in-card">
+                <div className="flex flex-col gap-1 text-center">
+                  <h3 className="type-heading-md">Sign in to ShiftPatch</h3>
+                  <p className="type-text-sm text-secondary">Enter your email and password.</p>
+                </div>
+                <NotificationBanner notice={{ kind: "error", message: "Invalid email or password" }} />
+                <TextField label="Email" type="email" placeholder="alex.kim@example.com" autoComplete="off" />
+                <TextField label="Password" type="password" autoComplete="off" />
+                <Button size="xl" className="w-full">
+                  Sign in
+                </Button>
+              </div>
+              <p className="text-center type-text-xs text-secondary">Demo with sample data only.</p>
+            </div>
           </div>
         </Specimen>
 
@@ -793,11 +812,60 @@ export function PatternsSection() {
       </Specimen>
 
       <Specimen title="Admin: live coverage" note="Counts and table refresh on their own within five seconds.">
-        <div className="mb-4 grid grid-cols-2 gap-4 md:max-w-sm">
-          <Stat label="Open shifts" value={2} />
-          <Stat label="Filled shifts" value={1} />
+        <div className="mb-4 grid grid-cols-2 gap-4">
+          <Stat label="Open shifts" value={2} status="open" caption="Waiting for a nurse" />
+          <Stat label="Filled shifts" value={1} status="filled" caption="Covered by a nurse" />
         </div>
         <ShiftTable />
+      </Specimen>
+
+      <Specimen
+        title="Section shell"
+        note="The inset sidebar jumps between sections of the one landing screen, so every test ID still shows with no navigation. Below 1000px it collapses to the compact header."
+      >
+        <div className="overflow-x-auto">
+          <div className="h-80 min-w-[1040px] overflow-hidden rounded-2xl shadow-hairline">
+            <div className="section-shell">
+              <aside className="section-side" aria-label="Sections">
+                <div className="flex h-9 items-center gap-2 px-3 type-text-sm font-semibold text-primary">
+                  <Image src="/brand/mark.svg" alt="" width={20} height={21} />
+                  ShiftPatch
+                </div>
+                <nav className="section-nav" aria-label="On this screen">
+                  <span className="section-marker" aria-hidden="true" />
+                  {SECTION_ROWS.map((row, index) => (
+                    <button
+                      key={row}
+                      type="button"
+                      className="section-row"
+                      aria-current={index === 0 ? "location" : undefined}
+                    >
+                      {row}
+                    </button>
+                  ))}
+                </nav>
+                <div className="mt-auto flex items-center gap-2 py-1 pr-1 pl-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate type-text-sm font-medium text-primary">Alex Kim</p>
+                    <p className="type-text-xs text-secondary">admin</p>
+                  </div>
+                  <Button variant="ghost-primary" size="sm">
+                    Sign out
+                  </Button>
+                </div>
+              </aside>
+              <div className="section-main">
+                <header className="section-top">
+                  <h3 className="section-wide type-heading-xs">Coverage</h3>
+                </header>
+                <div className="grid grid-cols-2 gap-4 p-6">
+                  <Stat label="Open shifts" value={2} status="open" caption="Waiting for a nurse" />
+                  <Stat label="Filled shifts" value={1} status="filled" caption="Covered by a nurse" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </Specimen>
 
       <Specimen
@@ -816,7 +884,10 @@ export function PatternsSection() {
 
 const LEFT_OUT = [
   { name: "Composer, chat messages", why: "Nothing in ShiftPatch is a conversation." },
-  { name: "Sidebar and rail", why: "Each role has one landing screen with everything on it." },
+  {
+    name: "Icon rail, history sidebar",
+    why: "Each role has one landing screen. The section shell only jumps within it.",
+  },
   { name: "Modal", why: "Cancelling is one click with no confirmation, and the post form opens inline." },
   { name: "Menus and popovers", why: "Native selects cover role and cancel reason." },
   { name: "Tooltip", why: "Every action has a visible label." },

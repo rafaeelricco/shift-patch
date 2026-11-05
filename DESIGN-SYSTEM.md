@@ -254,6 +254,20 @@ App breakpoints are Tailwind defaults (640/768/1024/1280/1536) plus `xs` 320. Si
 **App:** `--transition-duration-basic` 150ms (color, opacity, state: default) · `-relaxed` 300ms (panels, layout) · `--cubic-enter` `cubic-bezier(.19,1,.22,1)` (arriving, expo-out) · `--cubic-exit` `(.8,0,.4,1)` · `--cubic-exit-snappy` `(.65,0,.4,1)` · `--cubic-move` `(.65,0,.35,1)` (position) · default `(.4,0,.2,1)`. Rail buttons transition opacity+color 150ms; suggestion rows color 75ms. `data-reduced-motion` on `<html>` mirrors the OS.
 **Site:** durations fast 100ms (nav link color) · short 200ms (button color) · medium 300ms (card opacity, image zoom) · long 400ms · sidebar 640ms. Curves: `curve-a` linear `(0,0,1,1)` (color fades) · `curve-d` `(.6,0,.4,1)` (card hover opacity) · `primary` `(.17,.17,.3,1)` (overlays/dialogs 200ms, side panels 300ms) · `curve-sidebar` `(.22,1,.36,1)`. Card images scale slightly on hover over 300ms. Links dim to `primary-60` on hover rather than underlining.
 
+## ShiftPatch screens
+
+The rest of this file mirrors base. This section records how ShiftPatch applies it, and wins for ShiftPatch screens. The shell below stays within FR-1.8: each role has one landing screen, and every required test ID shows with no navigation. Classes live in `app/globals.css`.
+
+| Pattern       | Spec                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sign in       | Reference: login-03. `.sign-in-ground` is `--app-color-background-elevated-secondary`. A 384px column holds the mark and name, then `.sign-in-card` (`--radius-3xl`, 24px padding, hairline plus `--shadow-card`), then one line of `text-xs`. Title `heading-md`, centered. No social sign-in, sign-up or forgotten password. One solid action: Sign in, `xl`. The banner sits above the fields. |
+| Section shell | Reference: dashboard-01, inset variant. `.section-shell` holds a 288px `.section-side` and an inset `.section-main` with an 8px gap and a 52px sticky `.section-top`. Rows are text only, 36px, and scroll to a section instead of changing route. The active row follows scroll. The sidebar collapses to the compact header below a 1000px container.                                           |
+| Stat card     | `.surface-card` with a `text-sm` label and status badge on one row, a `heading-xl` tabular figure, and a `text-xs` caption. Two cards fill the row, above the coverage table. Admin only. No charts: reporting stops at the FR-5.3 counts.                                                                                                                                                        |
+
+**Corners.** A pill button's radius is half its height, so an `xl` button is 20px. A card whose last row is a full-width `xl` button uses `--radius-3xl`. Radii in the shell derive from the parent: `calc(var(--outer-radius) - var(--inset))`, a 16px window and an 8px gap giving 8px rows and main pane.
+
+**Motion.** Tokens only, in CSS. The hover highlight glides between rows at `--transition-duration-basic` with `--cubic-move`. The active marker moves at `-relaxed` with `--cubic-move`. The sign-in card, post form and banner arrive once at `-relaxed` with `--cubic-enter`. Sections rise once after sign-in with a 50ms stagger. Lists and polled data never animate. Reduced motion keeps the fades and drops the movement.
+
 ---
 
 ## App components (base)

@@ -17,6 +17,7 @@
 ## Inventory
 
 - `components/ui`: button, status-badge, notification-banner, field (text, select, file), data-table, shift-card, state-message. All local.
+- `app/globals.css`: `.sign-in-*`, `.section-*` and `.rise-in`, specimens only until the product screens use them.
 - `app/design-system`: public specimen page, banner demo.
 
 ## Advice
@@ -27,5 +28,7 @@
 
 ## Done / declined
 
+- Sign-in card uses `radius-3xl`, so the 40px pill (20px curve) stays inside it. The 16px forms keep their 18px buttons, a known 2px bend. Owner's decision, 2026-11-05.
+- Inset section sidebar, login-03 sign-in and stat cards with a badge and caption adopted from the flows, over the earlier "no sidebar" entry. It only jumps within the one landing screen (FR-1.8). No charts. Owner's decision, 2026-11-05.
 - Buttons are full pills at every size, per DESIGN-SYSTEM.md rule 6, over the size table's 8px and line 396. Owner's decision, 2026-11-05.
 - Badges compute from `--outer-radius` and `--inset` on a tight parent, and are pills otherwise. `--badge-radius-sm` is only the floor. Owner's decision, 2026-11-05.
