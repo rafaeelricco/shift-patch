@@ -12,17 +12,23 @@ Authoritative sources:
 
 Items marked (decision) are choices made where the sources are silent or conflict, not requirements imposed by the trial.
 
-Delivery priority is the fixed technical baseline and emailed core flow, followed by the supporting workflows in FR-7 to FR-9. Those supporting workflows remain in this version to complete the required UI surfaces; admin credential approval is a retained product decision. Reserve time within the eight-hour budget for deployed verification and all five submission materials. Further founder-wishlist features remain excluded.
+Delivery follows the actor groups under Functional requirements: Foundation, Nurse, Admin, Agency, then Operator. Each group's subsections are marked core or supporting. Core is the fixed technical baseline and the emailed core flow. Supporting covers credential upload and review, the audit log screen and scheduled hours. Those supporting workflows remain in this version to complete the required UI surfaces, and admin credential approval is a retained product decision. If time runs short, finish every group's core before any supporting subsection, because agency posting is part of the emailed commitment. Reserve time within the eight-hour budget for deployed verification and all five submission materials. Further founder-wishlist features remain excluded.
 
 ## Tracking
 
 Each requirement has a stable ID. IDs are never reused, and removed IDs are listed here. Check an item only after it has been verified against the deployed app or an automated test. Unchecked does not necessarily mean absent.
 
+Requirements are grouped by actor, so a group can hold IDs from several FR families. A route that several actors use sits with the first actor in delivery order, and later groups list it under "Relies on".
+
 Removed IDs: none.
 
 ## Functional requirements
 
-### FR-1 Login and roles
+### Foundation: every actor
+
+Built first. Every actor group depends on it. The seeded shifts and credential dates let the nurse group start before agency posting exists.
+
+#### Login and roles (FR-1) · core
 
 - [ ] FR-1.1 `POST /api/auth/login` with valid credentials returns 200 and `{ token, user: { id, name, role } }` for all five sample accounts. `token` is a JWT and `role` is `nurse`, `agency` or `admin`.
 - [ ] FR-1.2 A wrong email or wrong password returns 401 and `{ "error": "Invalid email or password" }`, with no difference between the two cases.
@@ -31,9 +37,120 @@ Removed IDs: none.
 - [ ] FR-1.5 A valid token whose role is not allowed on a route returns 403 with `{ error }`. (decision)
 - [ ] FR-1.6 Identity, role and agency come only from the verified token, never from the request body.
 - [ ] FR-1.7 The login form uses `login-email-input`, `login-password-input` and `login-submit-button`. A failed login shows the error message in `notification-banner`.
-- [ ] FR-1.8 Opening the submitted URL with no session shows the login form directly. After login, each role has one landing screen that shows all its required test IDs with no further navigation. A nurse gets `shift-list-item`, `shift-claim-button`, `shift-cancel-button`, `credential-upload-input`, `credential-expiry-date-input` and `timesheet-table`. An agency gets `agency-post-shift-button`, `shift-cancel-button` and `timesheet-table`. An admin gets `admin-dashboard-shift-table`, `admin-shift-status-badge`, `audit-log-table` and `timesheet-table`. Items that depend on data appear when that data exists. A user can sign out to switch accounts. (decision)
+- [ ] FR-1.8 Opening the submitted URL with no session shows the login form directly. After login, each role has one landing screen that shows all its required test IDs with no further navigation. FR-1.9 to FR-1.11 list them per role. Items that depend on data appear when that data exists. A user can sign out to switch accounts. (decision)
 
-### FR-2 Post a shift
+#### Sample data and deployed app (FR-11) · core
+
+- [ ] FR-11.1 A fresh database contains exactly the sample agencies, nurses, admin, shifts and credential dates from the technical spec. Redeploying neither duplicates nor overwrites them.
+- [ ] FR-11.2 The app runs at a public HTTPS URL that opens without any access step. The API is served at `/api/...` from that URL's root. See assumption A2.
+- [ ] FR-11.3 The API and all screens above work on the deployed URL with the sample logins.
+- [ ] FR-11.4 Failed logins and every user action in FR-2 to FR-9 report success or failure in a single `notification-banner`, told apart by its text.
+
+#### Audit trail (FR-8) · core
+
+Each actor group writes its own entries as it is built, so no route needs a later retrofit. The admin group adds the screen that reads them.
+
+- [ ] FR-8.2 Posting, claiming, blocked claims, cancelling, credential upload, approval, rejection and operator seed reset each add one entry. (decision)
+- [ ] FR-8.3 An entry is saved together with the change it records, so neither can exist without the other. Blocked claims change nothing and add only the entry. (decision)
+- [ ] FR-8.4 No route or screen can edit or delete an entry. (decision)
+
+### Nurse
+
+Sample accounts: `nurse-1` Maria Lopez (valid credential) and `nurse-2` James Cook (lapsed credential).
+
+#### Landing screen · core
+
+- [ ] FR-1.9 The nurse landing screen shows `shift-list-item`, `shift-claim-button`, `shift-cancel-button`, `credential-upload-input`, `credential-expiry-date-input` and `timesheet-table`. (decision)
+
+#### Browse and claim (FR-3) · core
+
+- [ ] FR-3.1 `GET /api/shifts` with any valid token returns 200 and `{ shifts }`, listing every shift of every status from both agencies, in the full shift shape. See assumption A1.
+- [ ] FR-3.2 The nurse screen shows each open shift as a `shift-list-item` with its own `shift-claim-button`.
+- [ ] FR-3.3 `POST /api/shifts/:id/claim` with an empty body from an eligible nurse returns 200 and the updated shift, with `status: "filled"` and `claimedBy` set to that nurse.
+- [ ] FR-3.4 Claiming a filled shift returns 409 with `{ error }`. An unknown ID returns 404. A caller who is not a nurse gets 403. (decision)
+- [ ] FR-3.5 When several nurses claim the same open shift at the same time, exactly one succeeds and the others get 409. (decision)
+- [ ] FR-3.6 A successful claim shows "Shift claimed" in the banner, and the shift moves to the nurse's own shifts without a manual reload. (decision)
+
+#### Lapsed-credential block (FR-4) · core
+
+- [ ] FR-4.1 A nurse with a lapsed credential gets 403 and exactly `{ "error": "Credential expired, cannot claim shift" }`, and the shift does not change.
+- [ ] FR-4.2 `shift-claim-button` stays visible and enabled for a nurse with a lapsed credential. Clicking it calls the claim route, and the banner shows exactly the FR-4.1 message. (decision)
+- [ ] FR-4.3 The credential check runs before the shift status check, so `nurse-2` gets this 403 on any existing shift. (decision)
+- [ ] FR-4.4 A credential is valid only if its approved expiry date is on or after both today and the date the shift ends. An overnight shift ends the day after its `date`. The expiry date itself counts as valid. "Today" means the current date in `America/New_York`, the facility-local time for this demo, and FR-7.3 uses the same date. (decision)
+- [ ] FR-4.5 `nurse-1` can claim the seeded `shift-1` even though its date has passed. (decision)
+- [ ] FR-4.6 Eligibility means valid credentials only, because the roster has no RN or LPN field. (decision)
+
+#### Cancellation and no-show (FR-6) · core
+
+The cancel route is built here and shared with the agency and admin groups.
+
+- [ ] FR-6.1 `POST /api/shifts/:id/cancel` with `{ reason }` on a filled shift returns 200 and the shift with `status: "open"` and `claimedBy: null`, plus `cancellation: { reason, previousNurseId }`.
+- [ ] FR-6.2 A missing or invalid `reason` returns 400 with `{ error }`. Valid reasons are `no-show` and `advance`. (decision)
+- [ ] FR-6.3 The assigned nurse, the owning agency and the admin may cancel. Everyone else gets 403. (decision)
+- [ ] FR-6.4 Cancel checks run in this order: 401 for a bad token, 404 for an unknown ID, 403 for an agency that does not own the shift or a nurse when another nurse holds it, 400 for an invalid reason, and 409 if the shift is open. A nurse cancelling any open shift therefore gets 409. (decision)
+- [ ] FR-6.5 A cancelled shift can be claimed again.
+- [ ] FR-6.7 `shift-cancel-button` appears on a nurse's own claimed shifts and on an agency's filled shifts. One click completes the cancellation, with no confirmation step. (decision)
+- [ ] FR-6.8 A nurse's cancel uses `advance`. An agency chooses the reason beside the button, defaulting to `advance`. (decision)
+- [ ] FR-6.9 Cancelling reopens the shift, so its status after a cancel is `open`, as the cancel route's example requires, and `cancelled` is never a stored or API status. The test ID table also lists `cancelled` as a badge value. See assumption A4. (decision)
+
+#### Credential upload (FR-7) · supporting
+
+- [ ] FR-7.1 A nurse can upload a document using `credential-upload-input` and `credential-expiry-date-input`, and submit it with a visible button. (decision)
+- [ ] FR-7.2 Only PDF, PNG and JPEG files up to 4 MB are accepted, and the type is checked from the file's content. (decision)
+- [ ] FR-7.3 An expiry date in the past is rejected with an error in the banner. (decision)
+- [ ] FR-7.4 An upload is `pending` and does not change eligibility until an admin approves it. (decision)
+- [ ] FR-7.5 A nurse can see their approved expiry date with its state, `valid` or `expired`, and their latest upload's expiry date with its state, `pending`, `approved` or `rejected`. A new upload replaces that nurse's existing pending upload and its file. (decision)
+- [ ] FR-7.7 Only the uploader and the admin can retrieve a document. Files are never publicly reachable. (decision)
+
+#### Scheduled hours (FR-9) · supporting
+
+The table and its role scoping are built here and shared with the admin and agency groups.
+
+- [ ] FR-9.1 `timesheet-table` lists filled shifts with nurse, agency, date, times and hours, labelled as scheduled hours. (decision)
+- [ ] FR-9.2 Overnight shifts count correctly, so `19:00` to `07:00` is 12 hours. (decision)
+- [ ] FR-9.3 An admin sees all rows, an agency sees its own shifts, and a nurse sees their own shifts. (decision)
+
+### Admin
+
+Sample account: `admin-1` Alex Kim.
+
+Relies on: FR-3.1 (all shifts), FR-6.1 to FR-6.4 (cancel through the API only), FR-7.7 (document access) and FR-9.1 to FR-9.3 (all rows).
+
+#### Landing screen · core
+
+- [ ] FR-1.11 The admin landing screen shows `admin-dashboard-shift-table`, `admin-shift-status-badge`, `audit-log-table` and `timesheet-table`. (decision)
+
+#### Live dashboard and basic reporting (FR-5) · core
+
+- [ ] FR-5.1 `admin-dashboard-shift-table` lists every shift with agency, role, date, times and the covering nurse's name.
+- [ ] FR-5.2 Each row has an `admin-shift-status-badge` showing the shift's API status, `open` or `filled`. See FR-6.9 and assumption A4. (decision)
+- [ ] FR-5.3 The dashboard shows the number of open shifts and filled shifts.
+- [ ] FR-5.4 A change made elsewhere appears within 5 seconds without a manual reload. (decision)
+- [ ] FR-5.5 Admin-only data and screens return 403 or are unavailable to nurses and agencies.
+
+#### Cancellation record (FR-6) · core
+
+- [ ] FR-6.6 The reason and previous nurse are stored and visible to the admin in the audit log.
+
+#### Credential review (FR-7) · supporting
+
+- [ ] FR-7.6 An admin can see pending uploads, open each document, and approve or reject it. Approval makes that expiry date the one used by FR-4.4. (decision)
+
+#### Audit log screen (FR-8) · supporting
+
+- [ ] FR-8.1 `audit-log-table` is visible only to the admin. It lists actor, action, affected record, time and any cancellation reason, newest first. (decision)
+
+### Agency
+
+Sample accounts: `agency-a` Sunrise Health Staffing and `agency-b` Metro Care Partners.
+
+Relies on: FR-6.1 to FR-6.4, FR-6.7 and FR-6.8 (cancel with a reason) and FR-9.1 to FR-9.3 (own rows).
+
+#### Landing screen · core
+
+- [ ] FR-1.10 The agency landing screen shows `agency-post-shift-button`, `shift-cancel-button` and `timesheet-table`. (decision)
+
+#### Post a shift (FR-2) · core
 
 - [ ] FR-2.1 `POST /api/shifts` with `{ role, date, startTime, endTime }` from an agency returns 201 and the full shift, with `status: "open"`, `claimedBy: null`, and `agencyId` and `agencyName` taken from the token.
 - [ ] FR-2.2 An `agencyId` in the request body has no effect.
@@ -47,79 +164,18 @@ Removed IDs: none.
 - [ ] FR-2.10 `agency-post-shift-button` opens the form and `agency-post-shift-submit-button` submits it. The form opens with valid default values, so it can be submitted unchanged. (decision)
 - [ ] FR-2.11 The agency screen lists only its own shifts with their current status and the covering nurse.
 
-### FR-3 Browse and claim
+### Operator
 
-- [ ] FR-3.1 `GET /api/shifts` with any valid token returns 200 and `{ shifts }`, listing every shift of every status from both agencies, in the full shift shape. See assumption A1.
-- [ ] FR-3.2 The nurse screen shows each open shift as a `shift-list-item` with its own `shift-claim-button`.
-- [ ] FR-3.3 `POST /api/shifts/:id/claim` with an empty body from an eligible nurse returns 200 and the updated shift, with `status: "filled"` and `claimedBy` set to that nurse.
-- [ ] FR-3.4 Claiming a filled shift returns 409 with `{ error }`. An unknown ID returns 404. A caller who is not a nurse gets 403. (decision)
-- [ ] FR-3.5 When several nurses claim the same open shift at the same time, exactly one succeeds and the others get 409. (decision)
-- [ ] FR-3.6 A successful claim shows "Shift claimed" in the banner, and the shift moves to the nurse's own shifts without a manual reload. (decision)
+No screen or HTTP route. Run from the deployment environment.
 
-### FR-4 Lapsed-credential block
-
-- [ ] FR-4.1 A nurse with a lapsed credential gets 403 and exactly `{ "error": "Credential expired, cannot claim shift" }`, and the shift does not change.
-- [ ] FR-4.2 `shift-claim-button` stays visible and enabled for a nurse with a lapsed credential. Clicking it calls the claim route, and the banner shows exactly the FR-4.1 message. (decision)
-- [ ] FR-4.3 The credential check runs before the shift status check, so `nurse-2` gets this 403 on any existing shift. (decision)
-- [ ] FR-4.4 A credential is valid only if its approved expiry date is on or after both today and the date the shift ends. An overnight shift ends the day after its `date`. The expiry date itself counts as valid. "Today" means the current date in `America/New_York`, the facility-local time for this demo, and FR-7.3 uses the same date. (decision)
-- [ ] FR-4.5 `nurse-1` can claim the seeded `shift-1` even though its date has passed. (decision)
-- [ ] FR-4.6 Eligibility means valid credentials only, because the roster has no RN or LPN field. (decision)
-
-### FR-5 Live admin dashboard and basic reporting
-
-- [ ] FR-5.1 `admin-dashboard-shift-table` lists every shift with agency, role, date, times and the covering nurse's name.
-- [ ] FR-5.2 Each row has an `admin-shift-status-badge` showing the shift's API status, `open` or `filled`. See FR-6.9 and assumption A4. (decision)
-- [ ] FR-5.3 The dashboard shows the number of open shifts and filled shifts.
-- [ ] FR-5.4 A change made elsewhere appears within 5 seconds without a manual reload. (decision)
-- [ ] FR-5.5 Admin-only data and screens return 403 or are unavailable to nurses and agencies.
-
-### FR-6 Cancellation and no-show
-
-- [ ] FR-6.1 `POST /api/shifts/:id/cancel` with `{ reason }` on a filled shift returns 200 and the shift with `status: "open"` and `claimedBy: null`, plus `cancellation: { reason, previousNurseId }`.
-- [ ] FR-6.2 A missing or invalid `reason` returns 400 with `{ error }`. Valid reasons are `no-show` and `advance`. (decision)
-- [ ] FR-6.3 The assigned nurse, the owning agency and the admin may cancel. Everyone else gets 403. (decision)
-- [ ] FR-6.4 Cancel checks run in this order: 401 for a bad token, 404 for an unknown ID, 403 for an agency that does not own the shift or a nurse when another nurse holds it, 400 for an invalid reason, and 409 if the shift is open. A nurse cancelling any open shift therefore gets 409. (decision)
-- [ ] FR-6.5 A cancelled shift can be claimed again.
-- [ ] FR-6.6 The reason and previous nurse are stored and visible to the admin in the audit log.
-- [ ] FR-6.7 `shift-cancel-button` appears on a nurse's own claimed shifts and on an agency's filled shifts. One click completes the cancellation, with no confirmation step. (decision)
-- [ ] FR-6.8 A nurse's cancel uses `advance`. An agency chooses the reason beside the button, defaulting to `advance`. (decision)
-- [ ] FR-6.9 Cancelling reopens the shift, so its status after a cancel is `open`, as the cancel route's example requires, and `cancelled` is never a stored or API status. The test ID table also lists `cancelled` as a badge value. See assumption A4. (decision)
-
-### FR-7 Credential upload and approval
-
-- [ ] FR-7.1 A nurse can upload a document using `credential-upload-input` and `credential-expiry-date-input`, and submit it with a visible button. (decision)
-- [ ] FR-7.2 Only PDF, PNG and JPEG files up to 4 MB are accepted, and the type is checked from the file's content. (decision)
-- [ ] FR-7.3 An expiry date in the past is rejected with an error in the banner. (decision)
-- [ ] FR-7.4 An upload is `pending` and does not change eligibility until an admin approves it. (decision)
-- [ ] FR-7.5 A nurse can see their approved expiry date with its state, `valid` or `expired`, and their latest upload's expiry date with its state, `pending`, `approved` or `rejected`. A new upload replaces that nurse's existing pending upload and its file. (decision)
-- [ ] FR-7.6 An admin can see pending uploads, open each document, and approve or reject it. Approval makes that expiry date the one used by FR-4.4. (decision)
-- [ ] FR-7.7 Only the uploader and the admin can retrieve a document. Files are never publicly reachable. (decision)
-
-### FR-8 Audit log
-
-- [ ] FR-8.1 `audit-log-table` is visible only to the admin. It lists actor, action, affected record, time and any cancellation reason, newest first. (decision)
-- [ ] FR-8.2 Posting, claiming, blocked claims, cancelling, credential upload, approval, rejection and operator seed reset each add one entry. (decision)
-- [ ] FR-8.3 An entry is saved together with the change it records, so neither can exist without the other. Blocked claims change nothing and add only the entry. (decision)
-- [ ] FR-8.4 No route or screen can edit or delete an entry. (decision)
-
-### FR-9 Timesheets (scheduled hours)
-
-- [ ] FR-9.1 `timesheet-table` lists filled shifts with nurse, agency, date, times and hours, labelled as scheduled hours. (decision)
-- [ ] FR-9.2 Overnight shifts count correctly, so `19:00` to `07:00` is 12 hours. (decision)
-- [ ] FR-9.3 An admin sees all rows, an agency sees its own shifts, and a nurse sees their own shifts. (decision)
-
-### FR-10 Operator seed reset
+#### Operator seed reset (FR-10) · supporting
 
 - [ ] FR-10.1 A documented operator command restores shifts and credential expiry dates to the exact sample data and removes all uploaded credential records and files. (decision)
 - [ ] FR-10.2 Only the deployment operator can run the reset. No application screen or HTTP endpoint exposes it. (decision)
 - [ ] FR-10.3 The audit log is kept and records the reset. IDs of removed shifts are not reused. (decision)
 
-### FR-11 Sample data and deployed app
+#### Submission (FR-11) · core
 
-- [ ] FR-11.1 A fresh database contains exactly the sample agencies, nurses, admin, shifts and credential dates from the technical spec. Redeploying neither duplicates nor overwrites them.
-- [ ] FR-11.2 The app runs at a public HTTPS URL that opens without any access step. The API is served at `/api/...` from that URL's root. See assumption A2.
-- [ ] FR-11.3 The API and all screens above work on the deployed URL with the sample logins.
-- [ ] FR-11.4 Failed logins and every user action in FR-2 to FR-9 report success or failure in a single `notification-banner`, told apart by its text.
 - [ ] FR-11.5 After the last verification and before submission, the operator seed reset in FR-10 runs on the deployed app, and `GET /api/shifts` is confirmed to return only `shift-1`, `shift-2` and `shift-3` in their seeded states. No other writes are made to deployed data before submitting. (decision)
 
 ## Non-functional requirements
