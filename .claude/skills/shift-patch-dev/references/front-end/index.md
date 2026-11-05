@@ -10,7 +10,7 @@ Next.js 16 App Router at the repo root. Worked code lives in each leaf. Reviewer
 | Tailwind utilities, token files, on-demand class lookup, the `bg-primary` trap | `tailwind.md`            |
 | Reusable class names, or the `cn()` class-merge helper                         | code: see Code locations |
 | Forms and typed API writes (`useForm`, `FormInput`, `call`, `RemoteData`)      | `forms.md`               |
-| Session: `Session` union, JWT, `localStorage` cache, `useSession`, sign-out    | `session.md`             |
+| Session: `Session` union, `sid` cookie, `localStorage` cache, `useSession`, sign-out    | `session.md`             |
 | `DataTable`: columns, rows, sorting, pagination, row actions                   | `tables.md`              |
 | Page skeleton: role gate, `RemoteData` cell, composed `Future` reads           | `pages.md`               |
 | Fonts, logo and other brand assets                                             | `design-system.md`       |
