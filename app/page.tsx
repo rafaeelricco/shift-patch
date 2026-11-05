@@ -981,6 +981,12 @@ const CANCEL_REASONS = [
   { value: "no-show", label: "No-show" },
 ] as const satisfies ReadonlyArray<{ value: CancelReason; label: string }>
 
+/**
+ * The two polls can disagree after a cancel and reclaim, so a timesheet row names the cover only while its nurse still
+ * holds the shift; otherwise the card falls back to "Covered by a nurse".
+ */
+const coverKey = (shiftId: string, nurseId: string): string => `${shiftId}:${nurseId}`
+
 /** FR-1.10: posting, the agency's own shifts with cancel, and scheduled hours on one screen. Each section polls. */
 function AgencyScreen({ user }: { user: User }) {
   const agencyId = user.id.value
@@ -1021,7 +1027,9 @@ function AgencyScreen({ user }: { user: User }) {
       )
     })
   const names: ReadonlyMap<string, string> = new Map(
-    covers.data instanceof Ready ? covers.data.value.map((row) => [row.shiftId, row.nurseName] as const) : []
+    covers.data instanceof Ready ?
+      covers.data.value.map((row) => [coverKey(row.shiftId, row.nurseId), row.nurseName] as const)
+    : []
   )
   return (
     <SectionShell user={user} title="Your shifts" banner={<BannerSlot notice={banner.notice} />}>
@@ -1101,7 +1109,7 @@ function AgencyShifts({
               : <AgencyFilledCard
                   key={shift.id}
                   shift={shift}
-                  nurse={names.get(shift.id) ?? null}
+                  nurse={names.get(coverKey(shift.id, shift.claimedBy)) ?? null}
                   onCancel={onCancel}
                 />
             )}
