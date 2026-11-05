@@ -203,7 +203,8 @@ describe("successful shift actions", () => {
     }
     const filled = { ...open, status: "filled", claimedBy: NURSE_A.id }
     const initial = action === "claim" ? open : filled
-    const updated = action === "claim" ? filled : { ...open, cancellation: { reason: "advance", previousNurseId: NURSE_A.id } }
+    const updated =
+      action === "claim" ? filled : { ...open, cancellation: { reason: "advance", previousNurseId: NURSE_A.id } }
     const preWrite = Promise.withResolvers<Response>()
     const postWrite = Promise.withResolvers<Response>()
     const listPath = "/api/shifts"
