@@ -1,7 +1,9 @@
+export { FileField }
+
 import { type ComponentProps, type ReactNode, useId } from "react"
 
 import { cn } from "@lib/utils"
-import { AlertCircleIcon, ChevronDownIcon } from "@/components/ui/icons"
+import { AlertCircleIcon } from "@ui/icons"
 
 type FieldProps = { label: string; hint?: string | undefined; error?: string | undefined }
 
@@ -32,57 +34,27 @@ function FieldFrame({
   )
 }
 
-function controlProps(
-  id: string,
-  { hint, error }: Pick<FieldProps, "hint" | "error">
-): { id: string; "aria-invalid": true | undefined; "aria-describedby": string | undefined } {
-  return {
-    id,
-    "aria-invalid": error ? true : undefined,
-    "aria-describedby": error || hint ? `${id}-message` : undefined,
-  }
-}
-
-export function TextField({
+/** A credential document picker: `FormInput` has no file config, so this is the one file control. */
+function FileField({
   label,
   hint,
   error,
   className,
   id: idProp,
   ...rest
-}: FieldProps & ComponentProps<"input">) {
+}: FieldProps & Omit<ComponentProps<"input">, "type">) {
   const generatedId = useId()
   const id = idProp ?? generatedId
   return (
     <FieldFrame label={label} hint={hint} error={error} controlId={id}>
-      <input className={cn("field-control", className)} {...controlProps(id, { hint, error })} {...rest} />
+      <input
+        type="file"
+        id={id}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error || hint ? `${id}-message` : undefined}
+        className={cn("field-control field-file", className)}
+        {...rest}
+      />
     </FieldFrame>
   )
-}
-
-export function SelectField({
-  label,
-  hint,
-  error,
-  className,
-  children,
-  id: idProp,
-  ...rest
-}: FieldProps & ComponentProps<"select">) {
-  const generatedId = useId()
-  const id = idProp ?? generatedId
-  return (
-    <FieldFrame label={label} hint={hint} error={error} controlId={id}>
-      <span className="field-select">
-        <select className={cn("field-control", className)} {...controlProps(id, { hint, error })} {...rest}>
-          {children}
-        </select>
-        <ChevronDownIcon />
-      </span>
-    </FieldFrame>
-  )
-}
-
-export function FileField({ className, ...rest }: FieldProps & Omit<ComponentProps<"input">, "type">) {
-  return <TextField type="file" className={cn("field-file", className)} {...rest} />
 }

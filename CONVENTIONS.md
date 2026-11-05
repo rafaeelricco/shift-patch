@@ -10,30 +10,25 @@ Favour static types, explicit data flow, immutability, pure functions, compositi
 
 ### Strings frozen outside the app
 
-The app reads and writes the candidate profile through the server's endpoints, and the field names
-and choice literals in those payloads are a contract the server owns. `@api/endpoints` re-exports them
-from `@be/domain/candidate/draft/aggregate/views` — the `*_FIELDS` lists, `CHOICE_OPTIONS`, `REQUIRED_PATHS`. Leave
-them verbatim and do not "fix" them:
+The technical spec (`docs/ShiftPatch-Technical-Spec.md`) owns the words that cross the API and the words graders look for. Leave them verbatim and do not "fix" them:
 
-- Field names — `BASICS_FIELDS`, `PAY_FIELDS`, `SEARCH_FIELDS` and the rest (`birthDate`, `salaryRange`,
-  `workModel`). The server decodes a `setProfileFields` path by these exact names.
-- Choice literals — `CHOICE_OPTIONS` (`contractorEntity: ["have_one", "can_open_one", "no"]`). Snake
-  case stays snake case even though app identifiers are camel case.
+- Status words: `open`, `filled`, `valid`, `expired`, `pending`, `approved`, `rejected`, as `StatusBadge` shows them (`components/ui/status-badge.tsx`). A cancelled shift reopens, so it reads `open`.
+- Choice literals: shift `role` is `RN` or `LPN`, login `role` is `nurse`, `agency` or `admin`, and cancel `reason` is `no-show` or `advance`. Kebab case stays kebab case even though app identifiers are camel case.
+- Field names: `agencyId`, `agencyName`, `startTime`, `endTime`, `claimedBy`, `cancellation`, `previousNurseId`.
+- Messages: `Invalid email or password` and `Credential expired, cannot claim shift`, shown in the banner exactly as the server sends them.
+- Test IDs: the 15 `data-testid` names, such as `shift-claim-button` and `notification-banner`.
 
-When new code must name one of those strings, keep the literal exact and keep the surrounding prose
-and identifiers in the app's own style:
+When new code must name one of those strings, keep the literal exact and keep the surrounding prose and identifiers in the app's own style:
 
 ```ts
-// ✗ never — "fixes" the literal and the server rejects the edit
-const canOpen = "canOpenOne"
+// ✗ never: "fixes" the literal and the server rejects the cancel
+const reason = "noShow"
 
 // ✓ the literal stays exact; the identifier follows app style
-const canOpen = "can_open_one"
+const noShowReason = "no-show"
 ```
 
-The same applies to display labels the user has already learned: the field labels in
-`src/pages/setup.tsx` (`BASICS_LABELS`, `PAY_LABELS`, …) are the one place a label is
-spelled, and every other surface reads from there.
+The same applies to words people have learned: the design system's content table spells "Shift claimed", "Scheduled hours" and "No open shifts right now", and every surface uses those words.
 
 ## Type Design
 
@@ -389,21 +384,21 @@ Numbers in a table are read by scanning down a column and comparing them. Ragged
 
 - **Format every count the same way.** Counts render with `toLocaleString()` and nothing else — no `toFixed`, no template literals, no local `Intl.NumberFormat`. A second formatter is a second rounding rule. A value that arrives as an integer renders as-is; don't add decimals it never had.
 
-- **Right-align numeric quantities** with `align: "right"` on the `ColumnDef` (`src/components/ui/datatable.tsx`), and pair it with `tabular-nums` on the cell so digits sit in fixed-width columns. No page renders a `DataTable` today; the counts beside the review section headings (`ReviewSection` in `src/pages/setup.tsx`, `tabular-nums` + `toLocaleString()`) show the same formatting outside a table. A new figure column takes this shape:
+- **Right-align numeric quantities** with `align: "right"` on the `ColumnDef` (`components/ui/datatable.tsx`), and pair it with `tabular-nums` on the cell so digits sit in fixed-width columns. No page renders a `DataTable` today. A new figure column takes this shape:
 
   ```tsx
   // illustrative — no table defines this column yet
-  applications: new ColumnDef({ label: "Applications", sortFun: byApplications, align: "right" }),
+  hours: new ColumnDef({ label: "Scheduled hours", sortFun: byHours, align: "right" }),
   // contents:
-  applications: <span className="tabular-nums">{row.applications.toLocaleString()}</span>,
+  hours: <span className="tabular-nums">{row.hours.toLocaleString()}</span>,
   ```
 
-- **Identifiers that happen to be digits stay left-aligned** — posting ids, ZIPs, phone numbers. They are labels, not measures; nobody sums them, and right-aligning them makes a column of unrelated strings look like a total. Right-align only what could sensibly be added up: scores, counts, sizes, durations.
+- **Identifiers that happen to be digits stay left-aligned** — shift ids, ZIPs, phone numbers. They are labels, not measures; nobody sums them, and right-aligning them makes a column of unrelated strings look like a total. Right-align only what could sensibly be added up: scores, counts, sizes, durations.
 
 - **Sort on the underlying value, never the formatted string.** `sortFun` reads the typed row value (a `byScore` compares `score.value`, not the rendered text), so `"10"` doesn't sort before `"9"`.
 
-- **Distinguish "no value" from a real zero.** An absent figure renders as an em dash (`—`) or a phrase that says why it is missing, never `0` — a posting with no salary reads differently from one that pays nothing.
+- **Distinguish "no value" from a real zero.** An absent figure renders as an em dash (`—`) or a phrase that says why it is missing, never `0` — a timesheet row with no hours yet reads differently from one scheduled for none.
 
-- **Drop unit suffixes that the header already carries.** A count column titled "Applications" renders `12`, not `12 applications` — and a suffix whose length varies with the value (`1 application` / `12 applications`) puts the digits back out of line, defeating the alignment it sits in.
+- **Drop unit suffixes that the header already carries.** A column titled "Scheduled hours" renders `12`, not `12 hours` — and a suffix whose length varies with the value (`1 hour` / `12 hours`) puts the digits back out of line, defeating the alignment it sits in.
 
 - **Composite and interactive cells are exempt.** A cell that is really a control (a status dropdown) or a stack (a score badge beside a band label) has no single right edge to align on; forcing one drags icons, badges and prose to the wrong side. Keep the figure itself `tabular-nums`, but leave the column's default alignment. The rule is for columns of plain figures.
