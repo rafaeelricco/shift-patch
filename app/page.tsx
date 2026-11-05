@@ -5,15 +5,12 @@ export default Page
 import Image from "next/image"
 import { type ChangeEvent, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
+import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  Calendar03Icon,
-  Clock01Icon,
-  File01Icon,
   Logout01Icon,
   Mail01Icon,
+  SidebarLeft01Icon,
   SquareLock02Icon,
-  Task01Icon,
   UnfoldMoreIcon,
   ViewIcon,
   ViewOffSlashIcon,
@@ -209,19 +206,16 @@ function RoleScreen({ user }: { user: User }) {
   }
 }
 
-type SectionLink = { id: string; label: string; icon: IconSvgElement; count?: number }
+const SIDEBAR_COOKIE = "shiftpatch_sidebar"
+const SIDEBAR_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
-const ROW_STEP_PX = 38 // a 36px row plus the nav's 2px gap
-
-/** The shell's --outer-radius less its --inset, so rows, the marker and the main frame nest inside the outer curve. */
+/** The shell's --outer-radius less its --inset, so the account trigger and main frame nest inside the outer curve. */
 const insetRadius = "rounded-[calc(var(--outer-radius)-var(--inset))]"
 
-/** A sidebar row: the jump links and the account trigger. */
-const sectionRow = cn(
+const accountRow = cn(
   insetRadius,
-  "relative flex h-9 cursor-pointer items-center justify-between gap-2 px-3 text-left text-sm text-secondary",
-  "transition-[color] duration-(--transition-duration-basic) ease-[ease] hover:text-primary",
-  "aria-[current=location]:font-medium aria-[current=location]:text-primary",
+  "relative flex h-9 cursor-pointer items-center text-left text-sm text-secondary",
+  "transition-colors duration-(--transition-duration-basic) ease-[ease] hover:bg-(--menu-item-background-color) hover:text-primary",
   "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
 )
 
@@ -234,12 +228,13 @@ const initials = (name: string) =>
     .toUpperCase()
 
 /** Design canvas account control: avatar, name and role, opening a menu whose one item is Sign out. */
-function AccountMenu({ user }: { user: User }) {
+function AccountMenu({ user, folded = false }: { user: User; folded?: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className={cn(sectionRow, "w-full justify-start gap-2 px-2")}
+        className={cn(accountRow, folded ? "w-full justify-center px-0" : "w-full justify-start gap-2 px-2")}
         aria-label={`Account: ${user.name}, ${user.role}`}
+        title={folded ? user.name : undefined}
       >
         <span
           aria-hidden="true"
@@ -248,11 +243,15 @@ function AccountMenu({ user }: { user: User }) {
         >
           {initials(user.name)}
         </span>
-        <span className="flex min-w-0 flex-1 flex-col text-left">
-          <span className="truncate type-text-sm font-medium text-primary">{user.name}</span>
-          <span className="type-text-xs text-secondary">{user.role}</span>
-        </span>
-        <HugeiconsIcon icon={UnfoldMoreIcon} className="size-4 flex-none text-secondary" aria-hidden="true" />
+        {folded ? null : (
+          <>
+            <span className="flex min-w-0 flex-1 flex-col text-left">
+              <span className="truncate type-text-sm font-medium text-primary">{user.name}</span>
+              <span className="type-text-xs text-secondary">{user.role}</span>
+            </span>
+            <HugeiconsIcon icon={UnfoldMoreIcon} className="size-4 flex-none text-secondary" aria-hidden="true" />
+          </>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="min-w-56">
         <DropdownMenuGroup>
@@ -267,69 +266,58 @@ function AccountMenu({ user }: { user: User }) {
   )
 }
 
-/** design-system.md "Section shell" and the canvas app frame: rows jump between sections of the one screen. */
 function SectionShell({
   user,
   title,
-  sections,
   banner,
   children,
 }: {
   user: User
   title: string
-  sections: ReadonlyArray<SectionLink>
   banner: ReactNode
   children: ReactNode
 }) {
-  const [current, setCurrent] = useState(0)
-  const jump = (index: number, id: string) => {
-    setCurrent(index)
-    document.getElementById(id)?.scrollIntoView({ block: "start" })
+  // The signed-in shell first mounts in the browser, so it can use the saved width immediately.
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    document.cookie.split(/;\s*/).includes(`${SIDEBAR_COOKIE}=expanded`)
+  )
+  const toggleSidebar = () => {
+    const next = !sidebarOpen
+    setSidebarOpen(next)
+    document.cookie = `${SIDEBAR_COOKIE}=${next ? "expanded" : "folded"}; Path=/; Max-Age=${SIDEBAR_COOKIE_MAX_AGE}; SameSite=Lax`
   }
+  const sidebarLabel = sidebarOpen ? "Collapse sidebar" : "Expand sidebar"
 
   return (
     <div className="h-dvh">
-      <div className="@container/section-shell flex h-full min-h-0 bg-elevated-secondary [--inset:8px] [--outer-radius:var(--radius-2xl)]">
+      <div className="@container/section-shell flex h-full min-h-0 bg-elevated-secondary [--inset:8px] [--outer-radius:var(--radius-2xl)] [--shell-header-height:52px]">
         <aside
-          className="flex w-72 flex-none flex-col gap-2 p-(--inset) @max-[1000px]/section-shell:hidden"
-          aria-label="Sections"
+          id="dashboard-sidebar"
+          aria-label="Sidebar"
+          className={cn(
+            "flex flex-none flex-col gap-2 overflow-hidden p-(--inset) transition-[width] duration-(--transition-duration-relaxed) ease-move motion-reduce:transition-none @max-[1000px]/section-shell:hidden",
+            sidebarOpen ? "w-72" : "w-12"
+          )}
         >
-          <div className="flex h-9 items-center gap-2 px-3 type-text-sm font-semibold text-primary">
-            <Image src="/brand/mark.svg" alt="" width={20} height={21} />
-            ShiftPatch
+          <div
+            className={cn(
+              "flex h-(--shell-header-height) flex-none items-center gap-2 type-text-sm font-semibold text-primary",
+              sidebarOpen ? "px-3" : "justify-center"
+            )}
+          >
+            <Image
+              src="/brand/mark.svg"
+              alt={sidebarOpen ? "" : "ShiftPatch"}
+              width={24}
+              height={26}
+              className="shrink-0"
+            />
+            {sidebarOpen ?
+              <span>ShiftPatch</span>
+            : null}
           </div>
-          {sections.length > 0 ?
-            <nav className="relative flex flex-col gap-0.5" aria-label="On this screen">
-              <span
-                className={cn(
-                  insetRadius,
-                  "pointer-events-none absolute inset-x-0 top-0 h-9 bg-(--menu-item-background-color)",
-                  "transition-[transform] duration-(--transition-duration-relaxed) ease-move motion-reduce:duration-0"
-                )}
-                aria-hidden="true"
-                style={{ transform: `translateY(${current * ROW_STEP_PX}px)` }}
-              />
-              {sections.map((section, index) => (
-                <button
-                  key={section.id}
-                  type="button"
-                  className={sectionRow}
-                  aria-current={index === current ? "location" : undefined}
-                  onClick={() => jump(index, section.id)}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <HugeiconsIcon icon={section.icon} className="size-4 flex-none" aria-hidden="true" />
-                    <span className="truncate">{section.label}</span>
-                  </span>
-                  {section.count === undefined ? null : (
-                    <span className="type-text-xs text-secondary tabular-nums">{section.count.toLocaleString()}</span>
-                  )}
-                </button>
-              ))}
-            </nav>
-          : null}
           <div className="mt-auto">
-            <AccountMenu user={user} />
+            <AccountMenu user={user} folded={!sidebarOpen} />
           </div>
         </aside>
         <div
@@ -339,7 +327,19 @@ function SectionShell({
             "@max-[1000px]/section-shell:m-0 @max-[1000px]/section-shell:rounded-none @max-[1000px]/section-shell:shadow-none"
           )}
         >
-          <header className="sticky top-0 z-6 flex h-[52px] items-center justify-between gap-3 border-b-[0.5px] border-default bg-surface px-6">
+          <header className="sticky top-0 z-6 flex h-(--shell-header-height) items-center justify-between gap-3 border-b-[0.5px] border-default bg-surface px-2">
+            <Button
+              variant="ghost-primary"
+              size="icon"
+              className="@max-[1000px]/section-shell:hidden"
+              aria-label={sidebarLabel}
+              aria-expanded={sidebarOpen}
+              aria-controls="dashboard-sidebar"
+              title={sidebarLabel}
+              onClick={toggleSidebar}
+            >
+              <HugeiconsIcon icon={SidebarLeft01Icon} aria-hidden="true" />
+            </Button>
             <div className="hidden items-center gap-2 @max-[1000px]/section-shell:flex">
               <Image src="/brand/mark.svg" alt="" width={20} height={21} />
             </div>
@@ -616,13 +616,6 @@ function TimesheetSection({ user }: { user: User }) {
 // ─── Nurse ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const EXPIRED_MESSAGE = "Credential expired, cannot claim shift"
-const NURSE_SECTIONS = [
-  { id: "open", label: "Open shifts", icon: Calendar03Icon },
-  { id: "mine", label: "Your shifts", icon: Task01Icon },
-  { id: "credential", label: "Credential", icon: File01Icon },
-  { id: "hours", label: "Scheduled hours", icon: Clock01Icon },
-] as const
-
 const loadShifts = (): Future<FetchError, ReadonlyArray<Shift>> => call(api.listShifts, {}).map(({ shifts }) => shifts)
 const loadCredential = (): Future<FetchError, CredentialSummary> => call(api.credential, {})
 
@@ -708,7 +701,6 @@ function NurseScreen({ user }: { user: User }) {
     <SectionShell
       user={user}
       title="Shifts"
-      sections={NURSE_SECTIONS}
       banner={
         <BannerSlot
           notice={banner.notice}
@@ -978,19 +970,13 @@ function CredentialForm({ solid, banner, onUploaded }: { solid: boolean; banner:
 
 function AgencyScreen({ user }: { user: User }) {
   return (
-    <SectionShell user={user} title="Your shifts" sections={[]} banner={null}>
+    <SectionShell user={user} title="Your shifts" banner={null}>
       {null}
     </SectionShell>
   )
 }
 
 // ─── Admin ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-const ADMIN_SECTIONS = [
-  { id: "coverage", label: "Shift coverage", icon: Calendar03Icon },
-  { id: "hours", label: "Scheduled hours", icon: Clock01Icon },
-  { id: "audit", label: "Audit log", icon: File01Icon },
-] as const
 
 const loadAdminShifts = (): Future<FetchError, ReadonlyArray<AdminShift>> =>
   call(api.adminShifts, {}).map(({ shifts }) => shifts)
@@ -1000,7 +986,7 @@ const loadAuditLog = (): Future<FetchError, ReadonlyArray<AuditEntry>> =>
 /** FR-1.11: coverage, scheduled hours and the audit log on one screen. Each section polls on its own (FR-5.4). */
 function AdminScreen({ user }: { user: User }) {
   return (
-    <SectionShell user={user} title="Coverage" sections={ADMIN_SECTIONS} banner={null}>
+    <SectionShell user={user} title="Coverage" banner={null}>
       <div className={cn(riseIn, "flex flex-col gap-10 p-6")}>
         <CoverageSection user={user} />
         <TimesheetSection user={user} />
