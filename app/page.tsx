@@ -1004,7 +1004,8 @@ function AgencyScreen({ user }: { user: User }) {
   }
   const posted = (shift: Shift): void => {
     setPosting(false)
-    shifts.updateAndRefresh((rows) => [...rows, shift])
+    // A poll that landed while the POST was in flight may already hold it.
+    shifts.updateAndRefresh((rows) => (rows.some((row) => row.id === shift.id) ? rows : [...rows, shift]))
     focusLater('[data-testid="agency-post-shift-button"]')
   }
   // FR-6.7 and FR-6.8: one click, with the reason chosen beside the button. No confirmation step.
