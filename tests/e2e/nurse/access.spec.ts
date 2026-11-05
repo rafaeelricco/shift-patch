@@ -43,9 +43,12 @@ test.beforeEach(async () => {
   await setExpiry("nurse-1", relativeDate(365))
 })
 
-test("FR-1.4 every Nurse-phase route answers 401 { error } with no token", async ({ request }) => {
+test("FR-1.4 every nurse and agency route answers 401 { error } with no token", async ({ request }) => {
   const calls = [
     () => request.get("/api/shifts"),
+    () =>
+      request.post("/api/shifts", { data: { role: "RN", date: "2026-10-05", startTime: "07:00", endTime: "19:00" } }),
+    () => request.get("/api/agencies/agency-a/shifts"),
     () => request.post("/api/shifts/shift-1/claim", { data: {} }),
     () => request.post("/api/shifts/shift-2/cancel", { data: { reason: "advance" } }),
     () => request.get("/api/credentials/me"),

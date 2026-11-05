@@ -9,6 +9,57 @@ test("persistence: a reload keeps the session and the same role screen", async (
   await expect(page.getByTestId("login-email-input")).toHaveCount(0)
 })
 
+test("desktop sidebar starts folded, preserves dashboard edits, and remembers both widths", async ({ page }) => {
+  await signInAs(page, "nurse-1")
+  const sidebar = page.getByRole("complementary", { name: "Sidebar" })
+  const expand = page.getByRole("button", { name: "Expand sidebar" })
+  const collapse = page.getByRole("button", { name: "Collapse sidebar" })
+  const expiry = page.getByTestId("credential-expiry-date-input")
+
+  await expect(sidebar).toHaveCSS("width", "48px")
+  await expect(expand).toHaveAttribute("aria-expanded", "false")
+  await expect(sidebar.getByRole("img", { name: "ShiftPatch" })).toBeVisible()
+  await expect(page.getByRole("navigation", { name: "On this screen" })).toHaveCount(0)
+  await expiry.fill("2030-10-15")
+
+  await expand.press("Enter")
+  await expect(collapse).toHaveAttribute("aria-expanded", "true")
+  await expect(collapse).toBeFocused()
+  await expect(sidebar).toHaveCSS("width", "288px")
+  await expect(sidebar.getByText("ShiftPatch", { exact: true })).toBeVisible()
+  await expect(sidebar.getByText(ACCOUNTS["nurse-1"].name)).toBeVisible()
+  await expect(expiry).toHaveValue("2030-10-15")
+
+  await page.reload()
+  await expect(collapse).toBeVisible()
+  await expect(sidebar).toHaveCSS("width", "288px")
+  await collapse.click()
+  await expect(sidebar).toHaveCSS("width", "48px")
+
+  await page.reload()
+  await expect(expand).toBeVisible()
+  await expect(sidebar).toHaveCSS("width", "48px")
+  await signOutVia(page, "nurse-1")
+})
+
+test("desktop sidebar does not animate when reduced motion is enabled", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await signInAs(page, "admin-1")
+  const sidebar = page.getByRole("complementary", { name: "Sidebar" })
+  await expect(sidebar).toHaveCSS("transition-property", "none")
+  await page.getByRole("button", { name: "Expand sidebar" }).click()
+  await expect(sidebar).toHaveCSS("width", "288px")
+})
+
+test("at phone width the sidebar is hidden and the header account menu signs out", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signInAs(page, "nurse-1")
+  await expect(page.getByRole("complementary", { name: "Sidebar" })).toBeHidden()
+  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeHidden()
+  await expect(page.getByRole("banner").getByRole("button", { name: "Account: Maria Lopez, nurse" })).toBeVisible()
+  await signOutVia(page, "nurse-1")
+})
+
 test("FR-1.8 sign out from the account menu returns to the form, and Back stays there", async ({ page }) => {
   await signInAs(page, "admin-1")
   await signOutVia(page, "admin-1")
@@ -21,8 +72,8 @@ test("FR-1.8 after sign-out another role signs in and sees its own screen", asyn
   await signInAs(page, "nurse-1")
   await signOutVia(page, "nurse-1")
   await signInAs(page, "agency-b")
-  await expect(page.getByText(ACCOUNTS["agency-b"].name).first()).toBeVisible()
-  await expect(page.getByText(ACCOUNTS["nurse-1"].name)).toHaveCount(0)
+  await expect(page.getByRole("button", { name: `Account: ${ACCOUNTS["agency-b"].name}, agency` })).toBeVisible()
+  await expect(page.getByRole("button", { name: `Account: ${ACCOUNTS["nurse-1"].name}, nurse` })).toHaveCount(0)
 })
 
 test("a fresh browser context shares no session", async ({ page, browser }) => {

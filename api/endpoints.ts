@@ -3,8 +3,10 @@ export {
   schema_user,
   schema_shift,
   schema_cancel_reason,
+  schema_new_shift,
   type User,
   type Shift,
+  type NewShift,
   type AdminShift,
   type AuditEntry,
   type CancelReason,
@@ -12,6 +14,7 @@ export {
   type TimesheetRow,
   type NoParams,
   type ShiftParams,
+  type AgencyParams,
 }
 
 import * as s from "@lib/json/schema"
@@ -20,6 +23,8 @@ import { Id } from "@lib/id"
 import { schema_actor } from "@lib/actor"
 import { CommandEndpoint, PlainEndpoint, QueryEndpoint, UploadEndpoint } from "@lib/endpoint"
 import { DateOnly, POSIX } from "@lib/time"
+import { always, fail } from "@lib/json/decoder"
+import { Success } from "@lib/result"
 
 // The login reply's user, as FR-1.1 sends it.
 const schema_user = s.object({
@@ -46,6 +51,28 @@ type Shift = s.Infer<typeof schema_shift>
 
 const schema_cancel_reason = s.stringEnum(["no-show", "advance"])
 type CancelReason = s.Infer<typeof schema_cancel_reason>
+
+// FR-2.4: a real YYYY-MM-DD date (2026-02-30 fails) and 24-hour HH:mm times. Both stay strings on the wire (time.md).
+// Year 0000 passes Luxon but Postgres DATE has no year zero, so it is rejected here rather than as a 500.
+const schema_shift_date = s.string.chain(
+  (str) => {
+    const date = s.decode(DateOnly.schema, str)
+    return date instanceof Success && date.value.year >= 1 ? always(str) : fail<string>("Invalid date")
+  },
+  (str) => str
+)
+const schema_clock = s.string.chain(
+  (str) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(str) ? always(str) : fail<string>("Invalid time")),
+  (str) => str
+)
+// FR-2.2: s.object ignores extra keys, so a body `agencyId` is dropped here. Start and end differing is the route's check.
+const schema_new_shift = s.object({
+  role: s.stringEnum(["RN", "LPN"]),
+  date: schema_shift_date,
+  startTime: schema_clock,
+  endTime: schema_clock,
+})
+type NewShift = s.Infer<typeof schema_new_shift>
 
 // FR-7.5: the approved date with its state, and the latest upload with its review status.
 const schema_credential = s.object({
@@ -96,6 +123,7 @@ type AuditEntry = s.Infer<typeof schema_audit_entry>
 
 type NoParams = Record<string, never>
 type ShiftParams = { id: string }
+type AgencyParams = { agencyId: string }
 const shiftPath =
   (action: "claim" | "cancel") =>
   ({ id }: ShiftParams): string =>
@@ -112,6 +140,12 @@ const api = {
   listShifts: new QueryEndpoint({
     path: (_: NoParams) => "/api/shifts",
     response: s.object({ shifts: s.array(schema_shift) }),
+  }),
+  postShift: new PlainEndpoint({ path: "/api/shifts", request: schema_new_shift, response: schema_shift }),
+  // FR-2.8: the full shift shape, exactly { agencyId, shifts } (NFR-1).
+  agencyShifts: new QueryEndpoint({
+    path: ({ agencyId }: AgencyParams) => `/api/agencies/${encodeURIComponent(agencyId)}/shifts`,
+    response: s.object({ agencyId: s.string, shifts: s.array(schema_shift) }),
   }),
   claimShift: new CommandEndpoint({ path: shiftPath("claim"), request: s.object({}), response: schema_shift }),
   cancelShift: new CommandEndpoint({

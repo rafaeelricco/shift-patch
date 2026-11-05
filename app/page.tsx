@@ -5,15 +5,12 @@ export default Page
 import Image from "next/image"
 import { type ChangeEvent, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
+import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  Calendar03Icon,
-  Clock01Icon,
-  File01Icon,
   Logout01Icon,
   Mail01Icon,
+  SidebarLeft01Icon,
   SquareLock02Icon,
-  Task01Icon,
   UnfoldMoreIcon,
   ViewIcon,
   ViewOffSlashIcon,
@@ -30,7 +27,9 @@ import {
   api,
   type AdminShift,
   type AuditEntry,
+  type CancelReason,
   type CredentialSummary,
+  type NewShift,
   type Shift,
   type TimesheetRow,
   type User,
@@ -44,7 +43,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@ui/dropdown-menu"
-import { FormInput, TextInput, useForm } from "@ui/forms"
+import { FormInput, SelectInput, TextInput, useForm } from "@ui/forms"
 import { NotificationBanner, type Notice } from "@ui/notification-banner"
 import { StateMessage } from "@ui/state-message"
 import { Input } from "@ui/input"
@@ -209,19 +208,16 @@ function RoleScreen({ user }: { user: User }) {
   }
 }
 
-type SectionLink = { id: string; label: string; icon: IconSvgElement; count?: number }
+const SIDEBAR_COOKIE = "shiftpatch_sidebar"
+const SIDEBAR_COOKIE_MAX_AGE = 7 * 24 * 60 * 60
 
-const ROW_STEP_PX = 38 // a 36px row plus the nav's 2px gap
-
-/** The shell's --outer-radius less its --inset, so rows, the marker and the main frame nest inside the outer curve. */
+/** The shell's --outer-radius less its --inset, so the account trigger and main frame nest inside the outer curve. */
 const insetRadius = "rounded-[calc(var(--outer-radius)-var(--inset))]"
 
-/** A sidebar row: the jump links and the account trigger. */
-const sectionRow = cn(
+const accountRow = cn(
   insetRadius,
-  "relative flex h-9 cursor-pointer items-center justify-between gap-2 px-3 text-left text-sm text-secondary",
-  "transition-[color] duration-(--transition-duration-basic) ease-[ease] hover:text-primary",
-  "aria-[current=location]:font-medium aria-[current=location]:text-primary",
+  "relative flex h-9 cursor-pointer items-center text-left text-sm text-secondary",
+  "transition-colors duration-(--transition-duration-basic) ease-[ease] hover:bg-(--menu-item-background-color) hover:text-primary",
   "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
 )
 
@@ -234,12 +230,13 @@ const initials = (name: string) =>
     .toUpperCase()
 
 /** Design canvas account control: avatar, name and role, opening a menu whose one item is Sign out. */
-function AccountMenu({ user }: { user: User }) {
+function AccountMenu({ user, folded = false }: { user: User; folded?: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className={cn(sectionRow, "w-full justify-start gap-2 px-2")}
+        className={cn(accountRow, folded ? "w-full justify-center px-0" : "w-full justify-start gap-2 px-2")}
         aria-label={`Account: ${user.name}, ${user.role}`}
+        title={folded ? user.name : undefined}
       >
         <span
           aria-hidden="true"
@@ -248,11 +245,15 @@ function AccountMenu({ user }: { user: User }) {
         >
           {initials(user.name)}
         </span>
-        <span className="flex min-w-0 flex-1 flex-col text-left">
-          <span className="truncate type-text-sm font-medium text-primary">{user.name}</span>
-          <span className="type-text-xs text-secondary">{user.role}</span>
-        </span>
-        <HugeiconsIcon icon={UnfoldMoreIcon} className="size-4 flex-none text-secondary" aria-hidden="true" />
+        {folded ? null : (
+          <>
+            <span className="flex min-w-0 flex-1 flex-col text-left">
+              <span className="truncate type-text-sm font-medium text-primary">{user.name}</span>
+              <span className="type-text-xs text-secondary">{user.role}</span>
+            </span>
+            <HugeiconsIcon icon={UnfoldMoreIcon} className="size-4 flex-none text-secondary" aria-hidden="true" />
+          </>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="min-w-56">
         <DropdownMenuGroup>
@@ -267,69 +268,58 @@ function AccountMenu({ user }: { user: User }) {
   )
 }
 
-/** design-system.md "Section shell" and the canvas app frame: rows jump between sections of the one screen. */
 function SectionShell({
   user,
   title,
-  sections,
   banner,
   children,
 }: {
   user: User
   title: string
-  sections: ReadonlyArray<SectionLink>
   banner: ReactNode
   children: ReactNode
 }) {
-  const [current, setCurrent] = useState(0)
-  const jump = (index: number, id: string) => {
-    setCurrent(index)
-    document.getElementById(id)?.scrollIntoView({ block: "start" })
+  // The signed-in shell first mounts in the browser, so it can use the saved width immediately.
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    document.cookie.split(/;\s*/).includes(`${SIDEBAR_COOKIE}=expanded`)
+  )
+  const toggleSidebar = () => {
+    const next = !sidebarOpen
+    setSidebarOpen(next)
+    document.cookie = `${SIDEBAR_COOKIE}=${next ? "expanded" : "folded"}; Path=/; Max-Age=${SIDEBAR_COOKIE_MAX_AGE}; SameSite=Lax`
   }
+  const sidebarLabel = sidebarOpen ? "Collapse sidebar" : "Expand sidebar"
 
   return (
     <div className="h-dvh">
-      <div className="@container/section-shell flex h-full min-h-0 bg-elevated-secondary [--inset:8px] [--outer-radius:var(--radius-2xl)]">
+      <div className="@container/section-shell flex h-full min-h-0 bg-elevated-secondary [--inset:8px] [--outer-radius:var(--radius-2xl)] [--shell-header-height:52px]">
         <aside
-          className="flex w-72 flex-none flex-col gap-2 p-(--inset) @max-[1000px]/section-shell:hidden"
-          aria-label="Sections"
+          id="dashboard-sidebar"
+          aria-label="Sidebar"
+          className={cn(
+            "flex flex-none flex-col gap-2 overflow-hidden p-(--inset) transition-[width] duration-(--transition-duration-relaxed) ease-move motion-reduce:transition-none @max-[1000px]/section-shell:hidden",
+            sidebarOpen ? "w-72" : "w-12"
+          )}
         >
-          <div className="flex h-9 items-center gap-2 px-3 type-text-sm font-semibold text-primary">
-            <Image src="/brand/mark.svg" alt="" width={20} height={21} />
-            ShiftPatch
+          <div
+            className={cn(
+              "flex h-(--shell-header-height) flex-none items-center gap-2 type-text-sm font-semibold text-primary",
+              sidebarOpen ? "px-3" : "justify-center"
+            )}
+          >
+            <Image
+              src="/brand/mark.svg"
+              alt={sidebarOpen ? "" : "ShiftPatch"}
+              width={24}
+              height={26}
+              className="shrink-0"
+            />
+            {sidebarOpen ?
+              <span>ShiftPatch</span>
+            : null}
           </div>
-          {sections.length > 0 ?
-            <nav className="relative flex flex-col gap-0.5" aria-label="On this screen">
-              <span
-                className={cn(
-                  insetRadius,
-                  "pointer-events-none absolute inset-x-0 top-0 h-9 bg-(--menu-item-background-color)",
-                  "transition-[transform] duration-(--transition-duration-relaxed) ease-move motion-reduce:duration-0"
-                )}
-                aria-hidden="true"
-                style={{ transform: `translateY(${current * ROW_STEP_PX}px)` }}
-              />
-              {sections.map((section, index) => (
-                <button
-                  key={section.id}
-                  type="button"
-                  className={sectionRow}
-                  aria-current={index === current ? "location" : undefined}
-                  onClick={() => jump(index, section.id)}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <HugeiconsIcon icon={section.icon} className="size-4 flex-none" aria-hidden="true" />
-                    <span className="truncate">{section.label}</span>
-                  </span>
-                  {section.count === undefined ? null : (
-                    <span className="type-text-xs text-secondary tabular-nums">{section.count.toLocaleString()}</span>
-                  )}
-                </button>
-              ))}
-            </nav>
-          : null}
           <div className="mt-auto">
-            <AccountMenu user={user} />
+            <AccountMenu user={user} folded={!sidebarOpen} />
           </div>
         </aside>
         <div
@@ -339,7 +329,19 @@ function SectionShell({
             "@max-[1000px]/section-shell:m-0 @max-[1000px]/section-shell:rounded-none @max-[1000px]/section-shell:shadow-none"
           )}
         >
-          <header className="sticky top-0 z-6 flex h-[52px] items-center justify-between gap-3 border-b-[0.5px] border-default bg-surface px-6">
+          <header className="sticky top-0 z-6 flex h-(--shell-header-height) items-center justify-between gap-3 border-b-[0.5px] border-default bg-surface px-2">
+            <Button
+              variant="ghost-primary"
+              size="icon"
+              className="@max-[1000px]/section-shell:hidden"
+              aria-label={sidebarLabel}
+              aria-expanded={sidebarOpen}
+              aria-controls="dashboard-sidebar"
+              title={sidebarLabel}
+              onClick={toggleSidebar}
+            >
+              <HugeiconsIcon icon={SidebarLeft01Icon} aria-hidden="true" />
+            </Button>
             <div className="hidden items-center gap-2 @max-[1000px]/section-shell:flex">
               <Image src="/brand/mark.svg" alt="" width={20} height={21} />
             </div>
@@ -576,6 +578,11 @@ const TIMESHEET_COLUMNS = {
  */
 function TimesheetSection({ user }: { user: User }) {
   const timesheet = usePoll(loadTimesheet, [user.id.value])
+  return <TimesheetTable timesheet={timesheet} />
+}
+
+/** The section itself, for a screen that also reads the rows (the agency names its covering nurses from them). */
+function TimesheetTable({ timesheet }: { timesheet: Polled<ReadonlyArray<TimesheetRow>> }) {
   const [sort, setSort] = useState<SortState>({ sorting: "decreasing", column: "date" })
   const data = timesheet.data
   const rows = data instanceof Ready ? [...data.value].sort(comparator(TIMESHEET_COLUMNS, sort)) : []
@@ -616,13 +623,6 @@ function TimesheetSection({ user }: { user: User }) {
 // ─── Nurse ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const EXPIRED_MESSAGE = "Credential expired, cannot claim shift"
-const NURSE_SECTIONS = [
-  { id: "open", label: "Open shifts", icon: Calendar03Icon },
-  { id: "mine", label: "Your shifts", icon: Task01Icon },
-  { id: "credential", label: "Credential", icon: File01Icon },
-  { id: "hours", label: "Scheduled hours", icon: Clock01Icon },
-] as const
-
 const loadShifts = (): Future<FetchError, ReadonlyArray<Shift>> => call(api.listShifts, {}).map(({ shifts }) => shifts)
 const loadCredential = (): Future<FetchError, CredentialSummary> => call(api.credential, {})
 
@@ -708,7 +708,6 @@ function NurseScreen({ user }: { user: User }) {
     <SectionShell
       user={user}
       title="Shifts"
-      sections={NURSE_SECTIONS}
       banner={
         <BannerSlot
           notice={banner.notice}
@@ -974,23 +973,284 @@ function CredentialForm({ solid, banner, onUploaded }: { solid: boolean; banner:
   )
 }
 
-// ─── Agency (its phase fills this) ─────────────────────────────────────────────────────────────────────────────
+// ─── Agency ────────────────────────────────────────────────────────────────────────────────────────────────────
 
+const SHIFT_ROLES = ["RN", "LPN"] as const
+const CANCEL_REASONS = [
+  { value: "advance", label: "Cancelled in advance" },
+  { value: "no-show", label: "No-show" },
+] as const satisfies ReadonlyArray<{ value: CancelReason; label: string }>
+
+/**
+ * The two polls can disagree after a cancel and reclaim, so a timesheet row names the cover only while its nurse still
+ * holds the shift; otherwise the card falls back to "Covered by a nurse".
+ */
+const coverKey = (shiftId: string, nurseId: string): string => `${shiftId}:${nurseId}`
+
+/** FR-1.10: posting, the agency's own shifts with cancel, and scheduled hours on one screen. Each section polls. */
 function AgencyScreen({ user }: { user: User }) {
+  const agencyId = user.id.value
+  const shifts = usePoll(() => call(api.agencyShifts, { agencyId }).map(({ shifts }) => shifts), [agencyId])
+  // FR-2.11's covering nurse: a Shift carries only `claimedBy`, and the agency-scoped timesheet names it (FR-9.3).
+  const covers = usePoll(loadTimesheet, [agencyId])
+  const banner = useBanner()
+  const { run } = useSingleFlight()
+  const [posting, setPosting] = useState(false)
+  // While a post is in flight the form must stay mounted, or its unmount would abort the request unreported (FR-11.4).
+  const [sending, setSending] = useState(false)
+  const refreshAll = (): void => {
+    shifts.refresh()
+    covers.refresh()
+  }
+  const posted = (shift: Shift): void => {
+    setPosting(false)
+    // A poll that landed while the POST was in flight may already hold it.
+    shifts.updateAndRefresh((rows) => (rows.some((row) => row.id === shift.id) ? rows : [...rows, shift]))
+    focusLater('[data-testid="agency-post-shift-button"]')
+  }
+  // FR-6.7 and FR-6.8: one click, with the reason chosen beside the button. No confirmation step.
+  const cancel = (shift: Shift, reason: CancelReason): void =>
+    run(`cancel:${shift.id}`, () => {
+      banner.clear()
+      return call(api.cancelShift, { id: shift.id }, { reason }).bimap(
+        (error) => {
+          banner.fail(error, "Couldn't cancel shift, try again")
+          refreshAll()
+          return error
+        },
+        ({ cancellation: _cancellation, ...updated }) => {
+          shifts.updateAndRefresh((rows) => rows.map((row) => (row.id === updated.id ? updated : row)))
+          covers.refresh()
+          banner.succeed("Shift cancelled, now open")
+          focusLater("#agency-shifts-title") // the card loses its button as it reopens
+          return updated
+        }
+      )
+    })
+  const names: ReadonlyMap<string, string> = new Map(
+    covers.data instanceof Ready ?
+      covers.data.value.map((row) => [coverKey(row.shiftId, row.nurseId), row.nurseName] as const)
+    : []
+  )
   return (
-    <SectionShell user={user} title="Your shifts" sections={[]} banner={null}>
-      {null}
+    <SectionShell user={user} title="Your shifts" banner={<BannerSlot notice={banner.notice} />}>
+      <div className={cn(riseIn, "flex flex-col gap-10 p-6")}>
+        <AgencyShifts
+          polled={shifts}
+          names={names}
+          posting={posting}
+          sending={sending}
+          onTogglePost={() => setPosting((open) => !open)}
+          onSending={setSending}
+          banner={banner}
+          onPosted={posted}
+          onCancel={cancel}
+        />
+        <TimesheetTable timesheet={covers} />
+      </div>
     </SectionShell>
   )
 }
 
-// ─── Admin ─────────────────────────────────────────────────────────────────────────────────────────────────────
+function AgencyShifts({
+  polled,
+  names,
+  posting,
+  sending,
+  onTogglePost,
+  onSending,
+  banner,
+  onPosted,
+  onCancel,
+}: {
+  polled: Polled<ReadonlyArray<Shift>>
+  names: ReadonlyMap<string, string>
+  posting: boolean
+  sending: boolean
+  onTogglePost: () => void
+  onSending: (sending: boolean) => void
+  banner: Banner
+  onPosted: (shift: Shift) => void
+  onCancel: (shift: Shift, reason: CancelReason) => void
+}) {
+  const data = polled.data
+  const rows =
+    data instanceof Ready ?
+      [...data.value].sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+    : []
+  return (
+    <section id="agency-shifts" aria-labelledby="agency-shifts-title" className="flex scroll-mt-16 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SectionHead id="agency-shifts" title="Your agency's shifts" polled={polled} />
+        {/* One solid action per view: this button while closed, the form's submit while open. */}
+        <Button
+          variant={posting ? "outline-primary" : "solid-primary"}
+          data-testid="agency-post-shift-button"
+          aria-expanded={posting}
+          aria-controls="post-shift"
+          disabled={sending}
+          onClick={onTogglePost}
+        >
+          Post a shift
+        </Button>
+      </div>
+      {/* PostShiftPattern: opens inline, never in a modal. Closing unmounts it, so it reopens on its defaults. */}
+      {posting ?
+        <PostShiftForm banner={banner} onSending={onSending} onPosted={onPosted} />
+      : null}
+      {data instanceof Ready ?
+        rows.length === 0 ?
+          <StateMessage
+            state={{ kind: "empty", title: "No shifts posted yet", body: "Shifts you post appear here." }}
+          />
+        : <div className="flex flex-col gap-3">
+            {rows.map((shift) =>
+              shift.claimedBy === null ?
+                <ShiftCard key={shift.id} shift={shift} detail="Waiting for a nurse" />
+              : <AgencyFilledCard
+                  key={shift.id}
+                  shift={shift}
+                  nurse={names.get(coverKey(shift.id, shift.claimedBy)) ?? null}
+                  onCancel={onCancel}
+                />
+            )}
+          </div>
 
-const ADMIN_SECTIONS = [
-  { id: "coverage", label: "Shift coverage", icon: Calendar03Icon },
-  { id: "hours", label: "Scheduled hours", icon: Clock01Icon },
-  { id: "audit", label: "Audit log", icon: File01Icon },
-] as const
+      : data instanceof Failed ?
+        <LoadFailed title="Couldn't load your shifts" retry={polled.refresh} />
+      : <StateMessage state={{ kind: "loading", label: "Loading your shifts" }} />}
+    </section>
+  )
+}
+
+/** AgencyCancelPattern. Each card owns its form, so its reason mounts with it and defaults to advance (FR-6.8). */
+function AgencyFilledCard({
+  shift,
+  nurse,
+  onCancel,
+}: {
+  shift: Shift
+  nurse: string | null // null until the timesheet names a freshly claimed shift; an ID never goes into prose
+  onCancel: (shift: Shift, reason: CancelReason) => void
+}) {
+  const { fields, values } = useForm({
+    fields: {
+      reason: new SelectInput({
+        label: "Reason",
+        items: CANCEL_REASONS,
+        defaultValue: "advance",
+        getValue: (reason) => reason.value,
+        getLabel: (reason) => reason.label,
+      }),
+    },
+  })
+  const reason = CANCEL_REASONS.find((one) => one.value === values.reason)?.value ?? "advance"
+  return (
+    <ShiftCard
+      shift={shift}
+      detail={nurse === null ? "Covered by a nurse" : `Covered by ${nurse}`}
+      action={
+        <>
+          <FormInput config={fields.reason} />
+          <Button variant="outline-danger" data-testid="shift-cancel-button" onClick={() => onCancel(shift, reason)}>
+            Cancel shift
+          </Button>
+        </>
+      }
+    />
+  )
+}
+
+/** PostShiftPattern after forms.md "post a shift": valid defaults (FR-2.10); an earlier end is overnight (FR-2.6). */
+function PostShiftForm({
+  banner,
+  onSending,
+  onPosted,
+}: {
+  banner: Banner
+  onSending: (sending: boolean) => void
+  onPosted: (shift: Shift) => void
+}) {
+  const [submit, setSubmit] = useState<RemoteData<FetchError, never>>(NotAsked())
+  const cancel = useRef<Cancel>(() => {})
+  useEffect(() => () => cancel.current(), [])
+
+  const { fields, onSubmit } = useForm({
+    fields: {
+      role: new SelectInput({
+        label: "Role",
+        items: SHIFT_ROLES,
+        defaultValue: "RN",
+        getValue: (role) => role,
+        getLabel: (role) => role,
+      }),
+      date: new TextInput({ label: "Date", type: "date", defaultValue: facilityToday().pretty() }),
+      startTime: new TextInput({ label: "Start", type: "time", defaultValue: "07:00" }),
+      endTime: new TextInput({
+        label: "End",
+        type: "time",
+        defaultValue: "19:00",
+        description: "Earlier than Start means overnight",
+      }),
+    },
+    validate: (values) => ({
+      role: values.role === null ? "Pick a role" : null,
+      date: values.date === "" ? "Pick a date" : null,
+      startTime: values.startTime === "" ? "Enter a start time" : null,
+      endTime:
+        values.endTime === "" ? "Enter an end time"
+        : values.startTime === values.endTime ? "Start and end must differ"
+        : null,
+    }),
+  })
+
+  const send = (event: FormEvent) =>
+    void onSubmit(({ role, date, startTime, endTime }) => {
+      if (submit.isLoading) return
+      const shiftRole = SHIFT_ROLES.find((one) => one === role)
+      if (shiftRole === undefined) return // validate has rejected this; the find narrows the type
+      // A native time input may report seconds; the API takes HH:mm (time.md).
+      const body: NewShift = { role: shiftRole, date, startTime: startTime.slice(0, 5), endTime: endTime.slice(0, 5) }
+      banner.clear()
+      setSubmit(Loading())
+      onSending(true)
+      cancel.current = call(api.postShift, body).fork(
+        (error) => {
+          setSubmit(NotAsked())
+          onSending(false)
+          banner.fail(error, "Couldn't post shift, try again") // the values stay
+        },
+        (shift) => {
+          setSubmit(NotAsked())
+          onSending(false)
+          banner.succeed("Shift posted")
+          onPosted(shift)
+        }
+      )
+    })(event)
+
+  return (
+    <form
+      id="post-shift"
+      noValidate
+      onSubmit={send}
+      className={cn(riseIn, surfaceCard, "flex flex-col gap-4 p-4")}
+      aria-label="Post a shift"
+    >
+      <FormInput config={fields.role} disabled={submit.isLoading} />
+      <FormInput config={fields.date} disabled={submit.isLoading} />
+      <div className="grid grid-cols-2 gap-4">
+        <FormInput config={fields.startTime} disabled={submit.isLoading} />
+        <FormInput config={fields.endTime} disabled={submit.isLoading} />
+      </div>
+      <Button type="submit" className="w-full" loading={submit.isLoading} data-testid="agency-post-shift-submit-button">
+        Post shift
+      </Button>
+    </form>
+  )
+}
+
+// ─── Admin ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const loadAdminShifts = (): Future<FetchError, ReadonlyArray<AdminShift>> =>
   call(api.adminShifts, {}).map(({ shifts }) => shifts)
@@ -1000,7 +1260,7 @@ const loadAuditLog = (): Future<FetchError, ReadonlyArray<AuditEntry>> =>
 /** FR-1.11: coverage, scheduled hours and the audit log on one screen. Each section polls on its own (FR-5.4). */
 function AdminScreen({ user }: { user: User }) {
   return (
-    <SectionShell user={user} title="Coverage" sections={ADMIN_SECTIONS} banner={null}>
+    <SectionShell user={user} title="Coverage" banner={null}>
       <div className={cn(riseIn, "flex flex-col gap-10 p-6")}>
         <CoverageSection user={user} />
         <TimesheetSection user={user} />

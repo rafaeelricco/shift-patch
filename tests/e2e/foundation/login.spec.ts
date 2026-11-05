@@ -148,6 +148,7 @@ test.describe("login form", () => {
   for (const id of ["nurse-1", "agency-a", "admin-1"] as const) {
     test(`FR-1.8 ${id} lands on its own screen with name and role`, async ({ page }) => {
       await signInAs(page, id)
+      await page.getByRole("button", { name: "Expand sidebar" }).click()
       await expect(page.getByText(ACCOUNTS[id].name).first()).toBeVisible()
       await expect(page.getByText(ACCOUNTS[id].role, { exact: true }).first()).toBeVisible()
       await expect(page.getByTestId("login-email-input")).toHaveCount(0)
