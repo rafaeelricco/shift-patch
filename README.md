@@ -87,6 +87,12 @@ explicit `Authorization` header takes precedence over `sid`. Logout returns
 credential returns `401` on protected routes. The Playwright session tests cover
 both logout transports and verify that another login for the same account still works.
 
+A focused Strix retest on November 6, 2026 completed with zero findings against
+the fixed local production build and disposable PostgreSQL. After both cookie-only
+and bearer-only logout, replaying either credential returned `401` from
+`/api/timesheet` and `Anonymous` from `/api/auth/me`. A separate login for the
+same account stayed active.
+
 Migration 3 adds a nullable bearer digest to the session table. Existing browser
 cookies work until their original expiry. API clients sign in again to get a
 registered bearer JWT. Route traffic sharing the signing key to the fixed build
