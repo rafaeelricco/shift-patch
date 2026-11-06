@@ -130,7 +130,7 @@ Keep the error typed in the cell and convert it where it renders: `fetchErrorToS
 - **Test IDs.** `TextInput` takes its test ID in `input: { "data-testid": … }`. Every other config takes `testId`, forwarded to its control or trigger. `Button`, `FileField` and `NotificationBanner` take `data-testid` as a prop. Names are in `./index.md`.
 - **`credential-expiry-date-input` is a native date input:** `new TextInput({ type: "date" })`. `DateInput` is a popover button, so a test filling that field would fail. A date no test types into can use `DateInput`.
 - **`credential-upload-input` is a `FileField`** from `@ui/field`, because `FormInput` has no file config. Hold the chosen `File` in its own state beside the form, and validate it in the submit handler. `upload` sends it as the raw request body.
-- **There is one banner.** FR-11.4 says each action reports in a single `notification-banner`, told apart by its text. Where several forms share a screen, the screen holds one `Notice` and each form reports to it.
+- **Action feedback.** FR-11.4 uses a single `notification-banner` test ID. Each signed-in screen shares one inline error notice and uses Sonner for success confirmations.
 
 ## Do / Do not
 

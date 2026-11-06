@@ -106,7 +106,7 @@ Sample accounts: `nurse-1` Maria Lopez (valid credential) and `nurse-2` James Co
 
 #### Landing screen · core
 
-- [x] FR-1.9 The nurse landing screen shows `shift-list-item`, `shift-claim-button`, `shift-cancel-button`, `credential-upload-input`, `credential-expiry-date-input` and `timesheet-table`. (decision)
+- [x] FR-1.9 The nurse landing screen shows `shift-list-item`, `shift-claim-button`, `shift-cancel-button` and `timesheet-table`. The Renewal disclosure on that screen contains `credential-upload-input` and `credential-expiry-date-input`. (decision)
 
 #### Browse and claim (FR-3) · core
 
@@ -135,7 +135,7 @@ The cancel route is built here and shared with the agency and admin groups.
 - [x] FR-6.3 The assigned nurse, the owning agency and the admin may cancel. Everyone else gets 403. (decision)
 - [x] FR-6.4 Cancel checks run in this order: 401 for a bad token, 404 for an unknown ID, 403 for an agency that does not own the shift or a nurse when another nurse holds it, 400 for an invalid reason, and 409 if the shift is open. A nurse cancelling any open shift therefore gets 409. (decision)
 - [x] FR-6.5 A cancelled shift can be claimed again.
-- [x] FR-6.7 `shift-cancel-button` appears on a nurse's own claimed shifts and on an agency's filled shifts. One click completes the cancellation, with no confirmation step. (decision)
+- [x] FR-6.7 `shift-cancel-button` appears on a nurse's own claimed shifts and on an agency's filled shifts. Nurses hold the button for two seconds with a primary pointer, Space or Enter. Agencies cancel with one click. (decision)
 - [x] FR-6.8 A nurse's cancel uses `advance`. An agency chooses the reason beside the button, defaulting to `advance`. (decision)
 - [x] FR-6.9 Cancelling reopens the shift, so its status after a cancel is `open`, as the cancel route's example requires, and `cancelled` is never a stored or API status. The test ID table also lists `cancelled` as a badge value. See assumption A4. (decision)
 
