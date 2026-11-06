@@ -1904,14 +1904,13 @@ function normaliseTime(typed: string): string {
   return typed
 }
 
-/** The times the draft would post, whichever pattern is chosen. */
+/** Resolve the posted times, including shorthand when the form submits before blur. */
 function draftTimes(draft: Draft): ShiftTimes {
   const pattern = HOUR_PATTERNS.find((one) => one.value === draft.pattern)
-  return pattern === undefined ? draft : pattern
+  return pattern ?? { startTime: normaliseTime(draft.startTime), endTime: normaliseTime(draft.endTime) }
 }
 
-function draftErrors(draft: Draft): DraftErrors {
-  const { startTime, endTime } = draftTimes(draft)
+function draftErrors({ startTime, endTime }: ShiftTimes): DraftErrors {
   return {
     ...(HH_MM.test(startTime) ? {} : { startTime: "Enter a start time" }),
     ...(!HH_MM.test(endTime) ? { endTime: "Enter an end time" }
@@ -2048,7 +2047,7 @@ function PostShiftSheet({
     if (banner.notice?.kind === "error") banner.clear()
   }
   const times = draftTimes(draft)
-  const valid = Object.keys(draftErrors(draft)).length === 0
+  const valid = Object.keys(draftErrors(times)).length === 0
   const today = facilityToday().pretty()
   const duplicate =
     valid &&
@@ -2064,7 +2063,7 @@ function PostShiftSheet({
   const send = (event: FormEvent): void => {
     event.preventDefault()
     if (submit.isLoading) return
-    const found = draftErrors(draft)
+    const found = draftErrors(times)
     setErrors(found)
     if (found.startTime !== undefined || found.endTime !== undefined) {
       focusLater(found.startTime === undefined ? "#post-shift-end" : "#post-shift-start")
@@ -2434,7 +2433,7 @@ function TimeField({
 /** Design `.sp-summary`: what Post shift will send, in words, updated on every change. */
 function ReviewLine({ draft }: { draft: Draft }) {
   const times = draftTimes(draft)
-  const valid = Object.keys(draftErrors(draft)).length === 0
+  const valid = Object.keys(draftErrors(times)).length === 0
   return (
     <div aria-live="polite" className="flex items-center gap-3 rounded-xl bg-elevated-secondary px-3 py-2.5">
       <HugeiconsIcon

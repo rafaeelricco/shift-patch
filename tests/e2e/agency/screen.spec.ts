@@ -73,6 +73,27 @@ test("FR-2.10 the form posts edited values, including an overnight shift", async
   await expect(card(page, day)).toContainText("19:00 to 07:00 next day")
 })
 
+test("FR-2.10 Enter posts custom shorthand without leaving the time field", async ({ page }) => {
+  await signInAs(page, "agency-a")
+  await page.getByTestId("agency-post-shift-button").click()
+  const form = page.getByRole("form", { name: "Post a shift" })
+  await form
+    .getByRole("radiogroup", { name: "Hours" })
+    .getByRole("radio", { name: /^Custom/ })
+    .check()
+  await form.getByLabel("Start").fill("1900")
+  const end = form.getByLabel("End")
+  await end.fill("7")
+  await expect(end).toHaveValue("7")
+  await expect(end).toBeFocused()
+  await expect(form).toContainText("19:00 to 07:00 next day, 12 scheduled hours")
+
+  const sent = page.waitForRequest((req) => req.url().endsWith("/api/shifts") && req.method() === "POST")
+  await end.press("Enter")
+  expect((await sent).postDataJSON()).toEqual({ role: "RN", date: relativeDate(1), startTime: "19:00", endTime: "07:00" })
+  await expectBanner(page, `Shift posted: RN, ${relativeDate(1)}, 19:00 to 07:00`)
+})
+
 test("FR-2.10 start equal to end is stopped in the form, with no request", async ({ page }) => {
   await signInAs(page, "agency-a")
   await page.getByTestId("agency-post-shift-button").click()
