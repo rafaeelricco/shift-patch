@@ -75,6 +75,29 @@ Use Semgrep 1.183.0, matching CI. High/critical dependency findings or ERROR-sev
 
 For deployed acceptance, use the Codex browser to exercise both agencies, both nurses and the admin at the public URL. Verify posting, claim/expiry blocking, cancellation and no-show, renewal approval/rejection, protected documents, audit entries, scoped hours, all 15 test IDs and action notifications. Measure admin updates within five seconds without reloading. Same-host tabs share login state; use verified hostnames of the same deployment for simultaneous role sessions, after checking each account on the canonical public URL. Record the revision, environment, date and observed results in `SPEC.md`.
 
+### Bearer-token replay after logout
+
+The November 6, 2026 local Strix scan found that logout revoked the browser cookie
+while the bearer JWT from the same login could still access protected routes
+until its eight-hour expiry. A local request replay confirmed the low-severity finding.
+
+`POST /api/auth/logout` revokes both credentials from the selected login. An
+explicit `Authorization` header takes precedence over `sid`. Logout returns
+`200 {}` for repeated requests and invalid credentials. Replaying either revoked
+credential returns `401` on protected routes. The Playwright session tests cover
+both logout transports and verify that another login for the same account still works.
+
+A focused Strix retest on November 6, 2026 completed with zero findings against
+the fixed local production build and disposable PostgreSQL. After both cookie-only
+and bearer-only logout, replaying either credential returned `401` from
+`/api/timesheet` and `Anonymous` from `/api/auth/me`. A separate login for the
+same account stayed active.
+
+Migration 3 adds a nullable bearer digest to the session table. Existing browser
+cookies work until their original expiry. API clients sign in again to get a
+registered bearer JWT. Route traffic sharing the signing key to the fixed build
+at cutover so older builds cannot continue accepting revoked tokens.
+
 ## Database migrations
 
 The first database request in each process checks `schema_migrations` under the existing setup advisory lock. It applies unapplied versions in order, then performs the existing first-seed check. Each version's DDL and ledger entry commit together; a failure rolls back the setup transaction and the next request retries.

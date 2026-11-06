@@ -2,6 +2,7 @@ export { authorize, resolveActor, startSession, endSession, type Role }
 
 import { createHash, randomBytes } from "node:crypto"
 import { schema_user } from "@api/endpoints"
+import * as s from "@lib/json/schema"
 import { db, sql, type Db, type DbError } from "@lib/db"
 import { Future } from "@lib/future"
 import { failure, fromDb } from "@lib/http"
@@ -31,7 +32,7 @@ function authorize(request: Request, roles: ReadonlyArray<Role>): Future<Respons
 
 /**
  * Who sent `request`, or `Anonymous`. An `Authorization` header is judged alone, so a bad one never falls back to the
- * cookie (FR-1.4). Without one, the `sid` cookie must name a live `auth_sessions` row. Rejects only on a database failure.
+ * cookie (FR-1.4). Both credentials require a live `auth_sessions` row. Rejects only on a database failure.
  */
 function resolveActor(request: Request): Future<DbError, Actor> {
   const header = request.headers.get("authorization")
@@ -40,7 +41,15 @@ function resolveActor(request: Request): Future<DbError, Actor> {
     if (token === undefined) return Future.resolve(ANONYMOUS)
     return verifyToken(token).bichain(
       () => Future.resolve<DbError, Actor>(ANONYMOUS),
-      (actor) => Future.resolve<DbError, Actor>(actor)
+      (actor) =>
+        db
+          .maybeOne(
+            sql`SELECT true AS active FROM auth_sessions
+              WHERE bearer_hash = ${digest(token)} AND account_id = ${actor.id.value}
+                AND expires_at > now()`,
+            s.object({ active: s.boolean })
+          )
+          .map<Actor>((session) => (session === null ? ANONYMOUS : actor))
     )
   }
   return readCookie(request, SESSION_COOKIE).maybe(Future.resolve<DbError, Actor>(ANONYMOUS), (token) =>
@@ -59,13 +68,14 @@ function resolveActor(request: Request): Future<DbError, Actor> {
  * Open a session for `accountId` inside the login transaction and return its `Set-Cookie` value. A fresh token every
  * time, never the request's (no session fixation). Expired rows are swept here, so no job is needed.
  */
-function startSession(tx: Db, request: Request, accountId: Id<"User">): Future<DbError, string> {
+function startSession(tx: Db, request: Request, accountId: Id<"User">, bearerToken: string): Future<DbError, string> {
   const token = randomBytes(32).toString("base64url")
   return tx
     .execute(sql`DELETE FROM auth_sessions WHERE expires_at <= now()`)
     .chain(() =>
-      tx.execute(sql`INSERT INTO auth_sessions (token_hash, account_id, expires_at)
-        VALUES (${digest(token)}, ${accountId.value}, now() + make_interval(secs => ${LIFETIME_SECONDS}))`)
+      tx.execute(sql`INSERT INTO auth_sessions (token_hash, bearer_hash, account_id, expires_at)
+        VALUES (${digest(token)}, ${digest(bearerToken)}, ${accountId.value},
+          now() + make_interval(secs => ${LIFETIME_SECONDS}))`)
     )
     .map(() => {
       const secure = isHttps(request) ? "; Secure" : ""
@@ -74,10 +84,26 @@ function startSession(tx: Db, request: Request, accountId: Id<"User">): Future<D
 }
 
 /**
- * Delete the request's own session, if any. No clearing `Set-Cookie`: it would apply unconditionally, so a slow reply
- * could delete a newer sign-in's cookie. The stale cookie then resolves to `Anonymous`.
+ * Delete the session selected by the request's credential, using the same header precedence as resolveActor.
+ * A clearing `Set-Cookie` in a slow reply could delete a newer sign-in's cookie. The stale cookie resolves to `Anonymous`.
  */
 function endSession(request: Request): Future<DbError, void> {
+  const header = request.headers.get("authorization")
+  if (header !== null) {
+    const token = BEARER.exec(header)?.[1]
+    if (token === undefined) return Future.resolve(undefined)
+    return verifyToken(token).bichain(
+      () => Future.resolve<DbError, void>(undefined),
+      (actor) =>
+        db
+          .execute(
+            sql`DELETE FROM auth_sessions
+            WHERE bearer_hash = ${digest(token)} AND account_id = ${actor.id.value}
+              AND expires_at > now()`
+          )
+          .map(() => undefined)
+    )
+  }
   return readCookie(request, SESSION_COOKIE).maybe(Future.resolve<DbError, void>(undefined), (token) =>
     db.execute(sql`DELETE FROM auth_sessions WHERE token_hash = ${digest(token)}`).map(() => undefined)
   )

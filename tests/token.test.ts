@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { SignJWT } from "jose"
 
 import { Id } from "@lib/id"
@@ -33,6 +33,15 @@ describe("token", () => {
       name: "Maria Lopez",
       role: "nurse",
     })
+  })
+
+  it("issues different tokens for the same account in the same second", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    try {
+      expect(await sign(maria)).not.toBe(await sign(maria))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("rejects a token signed with another key", async () => {
