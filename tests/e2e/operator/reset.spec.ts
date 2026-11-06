@@ -69,7 +69,7 @@ test("FR-10 the operator command restores exact seed data, removes documents and
     data: Buffer.from("%PDF-1.4\nSynthetic test document\n%%EOF"),
   })
   expect(uploaded.status()).toBe(201)
-  const uploadId = (await decoded(uploaded, api.uploadCredential.response)).latest?.id ?? ""
+  const uploadId = (await decoded(uploaded, api.uploadCredential.response)).latest?.id.value ?? ""
   expect(uploadId).not.toBe("")
   await run(db.execute(sql`DELETE FROM credentials WHERE nurse_id = 'nurse-1'`))
   await run(db.execute(sql`UPDATE credentials SET expires_on = '2030-01-01' WHERE nurse_id = 'nurse-2'`))
@@ -115,8 +115,8 @@ test("FR-10 the operator command restores exact seed data, removes documents and
 
   const next = await post()
   expect(next.status()).toBe(201)
-  expect(Number((await decoded(next, api.postShift.response)).id.slice(6))).toBeGreaterThan(
-    Number(previous.id.slice(6))
+  expect(Number((await decoded(next, api.postShift.response)).id.value.slice(6))).toBeGreaterThan(
+    Number(previous.id.value.slice(6))
   )
 })
 

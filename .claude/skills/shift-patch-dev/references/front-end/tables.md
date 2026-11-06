@@ -7,7 +7,7 @@ Write that mutates the collection: `./forms.md`. Host page: `./pages.md`.
 ## Audit
 
 - Read `components/ui/datatable.tsx` for the exported surface (`DataTable`, `ColumnDef`, `DataTablePagination`, `comparator`, `ColumnsConfig`, `SortState`).
-- `tests/datatable.test.tsx` mounts one. No page renders a `DataTable` yet, so the Examples below are the reference: a plain one-page table, a paginated one with selection and row actions, and one with a column toggle. Keep a new table's columns in its page file until a second page needs them.
+- `app/page.tsx` uses `DataTable` for coverage, audit entries and timesheets; `tests/datatable.test.tsx` covers the primitive. The examples below also show pagination, selection, row actions and column toggles. Keep a new table's columns in its page file until a second page needs them.
 - Check which test ID this table carries: `admin-dashboard-shift-table`, `audit-log-table` or `timesheet-table`.
 
 Report the audit briefly:
@@ -77,7 +77,7 @@ const DEFAULT_SORT: SortState = { sorting: "decreasing", column: "date" satisfie
 
 ```tsx
 rows={rows.map((row) => ({
-  key: row.id,
+  key: row.id.value,
   value: row,
   contents: {
     nurse: row.nurseName ?? "—",
@@ -210,7 +210,7 @@ select: new ColumnDef({
 contents: {
   select: (
     <StopClick>
-      <Checkbox checked={selected} onCheckedChange={() => onToggle(row.id)} aria-label={`Select ${row.id}`} />
+      <Checkbox checked={selected} onCheckedChange={() => onToggle(row.id.value)} aria-label={`Select ${row.id.value}`} />
     </StopClick>
   ),
   // ...
@@ -244,7 +244,7 @@ actions: new ColumnDef({ label: "", sortFun: null, className: "w-10" }),
       <HugeiconsIcon icon={MoreHorizontalIcon} />
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" className="w-52">
-      <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(row.id)}>
+      <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(row.id.value)}>
         <HugeiconsIcon icon={Copy01Icon} />
         Copy shift ID
       </DropdownMenuItem>
@@ -268,19 +268,7 @@ Project convention: see `CONVENTIONS.md`, "Numeric Data in Tables", for the full
 - **Exempt:** composite or interactive cells (a status badge, a status dropdown) have no single right edge. Keep the figure `tabular-nums` and leave the column's default alignment.
 - **Dates and times** render in the sans face with `tabular-nums`: `2026-10-03`, `07:00 to 19:00`. **Ids** are machine-readable, so they render in `font-mono` (`CLAUDE.md`).
 
-The timesheet's figure is **scheduled hours**: labelled that way, because nobody clocks in (FR-9.1). An end before the start means the next day, so `19:00` to `07:00` is 12 (FR-9.2). The API's times are strings, so the helper works on minutes and stays free of time zones (`../time.md`):
-
-```ts
-const minutesOf = (time: string): number => {
-  const [hours = 0, minutes = 0] = time.split(":").map(Number)
-  return hours * 60 + minutes
-}
-
-function scheduledHours(startTime: string, endTime: string): number {
-  const span = minutesOf(endTime) - minutesOf(startTime)
-  return Duration.minutes(span < 0 ? span + 24 * 60 : span).asHours()
-}
-```
+The timesheet's figure is **scheduled hours**, because nobody clocks in (FR-9.1). Use the shared `scheduledDuration` described in `../time.md` when deriving that value; the API's timesheet response already supplies `hours`.
 
 ```tsx
 hours: new ColumnDef({ label: "Scheduled hours", sortFun: byHours, align: "right" }),
@@ -309,20 +297,12 @@ hours: <span className="tabular-nums">{row.hours.toLocaleString()}</span>,
 
 ## Examples
 
-Three self-contained snippets against one small domain type. It is the API's shift shape plus the covering nurse's name and its scheduled hours, as FR-5.1 and FR-9.1 show them.
+Three self-contained snippets use the joined admin shift with scheduled hours derived for display, as FR-5.1 and FR-9.1 show them.
 
 ```ts
-type ShiftRow = {
-  readonly id: string
-  readonly agencyName: string
-  readonly role: "RN" | "LPN"
-  readonly date: string // YYYY-MM-DD, facility-local
-  readonly startTime: string // HH:mm, facility-local
-  readonly endTime: string // HH:mm, facility-local
-  readonly hours: number
-  readonly status: "open" | "filled"
-  readonly nurseName: string | null
-}
+import { type AdminShift } from "@api/endpoints"
+
+type ShiftRow = AdminShift & { readonly hours: number }
 ```
 
 ### 1. Sorted table, one page
@@ -367,7 +347,7 @@ function ShiftTable({ rows }: { readonly rows: readonly ShiftRow[] }) {
         </>
       }
       rows={ordered.map((row) => ({
-        key: row.id,
+        key: row.id.value,
         value: row,
         contents: {
           agency: row.agencyName,
@@ -418,7 +398,7 @@ function RowActions({ row }: { readonly row: ShiftRow }) {
           <HugeiconsIcon icon={MoreHorizontalIcon} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(row.id)}>
+          <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(row.id.value)}>
             <HugeiconsIcon icon={Copy01Icon} />
             Copy shift ID
           </DropdownMenuItem>
@@ -439,7 +419,7 @@ function ShiftTableWithActions(props: {
 
   const ordered = useMemo(() => props.rows.slice().sort(comparator(SHIFT_COLUMNS, sort)), [props.rows, sort])
   const current = paginate(ordered, page, pageSize)
-  const allSelected = current.rows.length > 0 && current.rows.every((row) => selected.has(row.id))
+  const allSelected = current.rows.length > 0 && current.rows.every((row) => selected.has(row.id.value))
 
   const onSort = (next: SortState) => {
     setSort(next)
@@ -463,8 +443,8 @@ function ShiftTableWithActions(props: {
     setSelected((prev) => {
       const next = new Set(prev)
       for (const row of current.rows) {
-        if (allSelected) next.delete(row.id)
-        else next.add(row.id)
+        if (allSelected) next.delete(row.id.value)
+        else next.add(row.id.value)
       }
       return next
     })
@@ -488,17 +468,17 @@ function ShiftTableWithActions(props: {
         onSortChange={onSort}
         emptyMessage="No shifts yet"
         rows={current.rows.map((row) => ({
-          key: row.id,
+          key: row.id.value,
           value: row,
-          selected: selected.has(row.id),
+          selected: selected.has(row.id.value),
           onClick: () => props.onOpen(row),
           contents: {
             select: (
               <StopClick>
                 <Checkbox
-                  checked={selected.has(row.id)}
-                  onCheckedChange={() => onToggle(row.id)}
-                  aria-label={`Select ${row.id}`}
+                  checked={selected.has(row.id.value)}
+                  onCheckedChange={() => onToggle(row.id.value)}
+                  aria-label={`Select ${row.id.value}`}
                 />
               </StopClick>
             ),
@@ -572,7 +552,7 @@ function ConditionalShiftTable(props: { readonly rows: readonly ShiftRow[] }) {
         onSortChange={setSort}
         emptyMessage="No shifts yet"
         rows={ordered.map((row) => ({
-          key: row.id,
+          key: row.id.value,
           value: row,
           contents: {
             agency: row.agencyName,

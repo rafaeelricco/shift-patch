@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * A sortable table and its pagination controls, for list pages. No page renders one yet; the recipe is in
+ * A sortable table and its pagination controls, used by the role screens in `app/page.tsx`. The recipe is in
  * `.claude/skills/shift-patch-dev/references/front-end/tables.md`.
  *
  * Both are controlled. `DataTable` draws the sort arrows and reports the next sort; the caller sorts its rows with
@@ -13,7 +13,7 @@
  * }
  * const [sort, setSort] = useState<SortState>({ sorting: "unsorted", column: null })
  * const rows = [...shifts].sort(comparator(columns, sort))
- *   .map((shift) => ({ key: shift.id, value: shift, contents: { facility: shift.facility } }))
+ *   .map((shift) => ({ key: shift.id.value, value: shift, contents: { facility: shift.facility } }))
  * <DataTable columns={columns} columnOrder={["facility"]} rows={rows} emptyMessage="No shifts yet." sort={sort}
  *   onSortChange={setSort} />
  * ```

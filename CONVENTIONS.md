@@ -384,7 +384,7 @@ Numbers in a table are read by scanning down a column and comparing them. Ragged
 
 - **Format every count the same way.** Counts render with `toLocaleString()` and nothing else — no `toFixed`, no template literals, no local `Intl.NumberFormat`. A second formatter is a second rounding rule. A value that arrives as an integer renders as-is; don't add decimals it never had.
 
-- **Right-align numeric quantities** with `align: "right"` on the `ColumnDef` (`components/ui/datatable.tsx`), and pair it with `tabular-nums` on the cell so digits sit in fixed-width columns. No page renders a `DataTable` today. A new figure column takes this shape:
+- **Right-align numeric quantities** with `align: "right"` on the `ColumnDef` (`components/ui/datatable.tsx`), and pair it with `tabular-nums` on the cell so digits sit in fixed-width columns. The role screens in `app/page.tsx` render `DataTable`. A new figure column takes this shape:
 
   ```tsx
   // illustrative — no table defines this column yet

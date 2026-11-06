@@ -15,10 +15,9 @@ import {
   useRef,
   useState,
 } from "react"
-
 import { cva, type VariantProps } from "class-variance-authority"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
-import { toast, Toaster } from "sonner"
+import { toast, type Action } from "sonner"
 import {
   Activity01Icon,
   Add01Icon,
@@ -47,12 +46,11 @@ import {
   ViewIcon,
   ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons"
-
 import { useSession } from "@hooks/use-session"
 import { signIn, signOut } from "@lib/session"
 import { Future, type Cancel } from "@lib/future"
 import { DateOnly, Duration, POSIX } from "@lib/time"
-import { FACILITY_TIMEZONE, facilityToday } from "@lib/facility"
+import { scheduledDuration } from "@lib/scheduled-duration"
 import { Failed, Loading, NotAsked, Ready, type RemoteData } from "@lib/remote-data"
 import { BadStatus, call, upload, type FetchError } from "@api/request"
 import {
@@ -79,11 +77,9 @@ import {
 } from "@ui/dropdown-menu"
 import { FormInput, TextInput, useForm } from "@ui/forms"
 import { HoldButton } from "@ui/hold-button"
-import { NotificationBanner, type Notice } from "@ui/notification-banner"
-import { StateMessage } from "@ui/state-message"
+import { StateMessage, shimmerText } from "@ui/state-message"
 import { Input } from "@ui/input"
 import { Label } from "@ui/label"
-import "./page.css"
 import { cn } from "@lib/utils"
 import { surfaceCard } from "@ui/surface-card"
 import { StatusBadge } from "@ui/status-badge"
@@ -91,11 +87,21 @@ import { FileField, fieldFrame, fieldMessage } from "@ui/field"
 import { AlertCircleIcon } from "@ui/icons"
 import { Popover, PopoverContent, PopoverTrigger } from "@ui/popover"
 import { ScrollArea } from "@ui/scroll-area"
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@ui/sheet"
+import {
+  Sheet,
+  SheetTrigger,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@ui/sheet"
 import { ColumnDef, DataTable, comparator, type ColumnsConfig, type SortState } from "@ui/datatable"
 
 /** One entrance: the sign-in card, the post form, sections after sign-in. Reduced motion fades instead. */
-const riseIn = "shiftpatch-page-rise-in"
+const riseIn = "animate-rise-in motion-reduce:[animation-name:fade-in]"
+const loadingText = cn(shimmerText, "motion-reduce:[animation-timing-function:ease-in-out]")
 /** Design `.sp-page`: one centred column, 1200px wide, 32px between sections; tighter on a compact shell. */
 const pageBody = cn(
   "mx-auto flex w-full max-w-300 flex-col gap-8 px-6 pt-6 pb-12",
@@ -108,7 +114,6 @@ function Page() {
     case "Checking":
       return <StateMessage state={{ kind: "loading", label: "Loading" }} />
     case "SignedOut":
-      // Design canvas A4: a 401 to a signed-in request lands here once, with the reason carried by lib/session.
       return <LoginForm expired={session.expired} />
     case "SignedIn":
       return <RoleScreen key={session.user.id.value} user={session.user} />
@@ -117,12 +122,16 @@ function Page() {
   }
 }
 
-// Design canvas "Sign in": one card, one solid action, one message slot (Login-States, Edge-Cases A1-A2).
+// Design canvas "Sign in": one card and one solid action (Login-States, Edge-Cases A1-A2).
 // No client-side validation: the form is noValidate and the server's 401 reports an empty or wrong entry.
-// While `expired` and nothing has been tried yet, the banner reads "Session expired, sign in again".
 function LoginForm({ expired }: { expired: boolean }) {
   const [submit, setSubmit] = useState<RemoteData<FetchError, never>>(NotAsked())
   const [passwordVisible, setPasswordVisible] = useState(false)
+  const { fail, clear } = useActionFeedback()
+  useEffect(() => {
+    if (expired) fail("Session expired, sign in again", "")
+    return clear
+  }, [expired, fail, clear])
   const cancel = useRef<Cancel>(() => {})
   useEffect(() => () => cancel.current(), [])
 
@@ -150,10 +159,12 @@ function LoginForm({ expired }: { expired: boolean }) {
   const send = (event: FormEvent) =>
     void onSubmit((input) => {
       if (submit.isLoading) return
+      clear()
       setSubmit(Loading())
       cancel.current = signIn(input.email.trim(), input.password).fork(
         (error) => {
           setSubmit(Failed(error))
+          fail(loginFailure(error), "")
           fields.password.values.onChange("") // the email stays, the password clears (Login-States)
         },
         () => {} // the session commits, the gate swaps the screen, and this form unmounts
@@ -166,7 +177,7 @@ function LoginForm({ expired }: { expired: boolean }) {
         <form
           noValidate
           onSubmit={send}
-          className={cn("shiftpatch-login-form", "flex flex-col gap-4 rounded-3xl bg-card p-6 shadow-hairline")}
+          className="flex flex-col gap-4 rounded-3xl bg-card p-6 shadow-hairline"
           aria-label="Sign in"
         >
           <div className="flex justify-center">
@@ -176,18 +187,7 @@ function LoginForm({ expired }: { expired: boolean }) {
             <h1 className="type-heading-md">Welcome back</h1>
             <p className="type-text-sm text-secondary">Enter your email and password.</p>
           </div>
-          {submit instanceof Failed ?
-            <NotificationBanner
-              data-testid="notification-banner"
-              notice={{ kind: "error", message: loginFailure(submit.error) }}
-            />
-          : expired && submit instanceof NotAsked ?
-            <NotificationBanner
-              data-testid="notification-banner"
-              notice={{ kind: "error", message: "Session expired, sign in again" }}
-            />
-          : null}
-          <FormInput config={fields.email} className={"shiftpatch-login-field"} disabled={submit.isLoading} />
+          <FormInput config={fields.email} disabled={submit.isLoading} />
           <div className="flex min-w-0 flex-col gap-2">
             <Label htmlFor={fields.password.values.id}>Password</Label>
             <div className="relative">
@@ -201,16 +201,20 @@ function LoginForm({ expired }: { expired: boolean }) {
                 value={fields.password.values.value}
                 onChange={(event) => fields.password.values.onChange(event.target.value)}
                 disabled={submit.isLoading}
-                className={cn("shiftpatch-login-field", "pr-10 pl-9")}
+                className="pr-10 pl-9"
               />
-              <HugeiconsIcon icon={SquareLock02Icon} className={"shiftpatch-login-icon"} aria-hidden="true" />
+              <HugeiconsIcon
+                icon={SquareLock02Icon}
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-secondary"
+                aria-hidden="true"
+              />
               <button
                 type="button"
                 aria-label={passwordVisible ? "Hide password" : "Show password"}
                 aria-pressed={passwordVisible}
                 disabled={submit.isLoading}
                 onClick={() => setPasswordVisible((visible) => !visible)}
-                className={"shiftpatch-password-toggle"}
+                className="absolute top-1/2 right-2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-secondary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring [&_svg]:size-4"
               >
                 <HugeiconsIcon icon={passwordVisible ? ViewOffSlashIcon : ViewIcon} aria-hidden="true" />
               </button>
@@ -225,7 +229,6 @@ function LoginForm({ expired }: { expired: boolean }) {
           >
             Sign in
           </Button>
-          <p className="text-center type-text-xs text-secondary">Demo with sample data only.</p>
         </form>
       </div>
     </main>
@@ -311,19 +314,66 @@ function AccountMenu({ user, folded = false }: { user: User; folded?: boolean })
   )
 }
 
+/** Compact account access keeps the full identity and sign-out action in a bottom sheet. */
+function MobileAccountSheet({ user }: { user: User }) {
+  return (
+    <Sheet>
+      <SheetTrigger
+        aria-label={`Account: ${user.name}, ${user.role}`}
+        render={<Button variant="ghost-primary" size="icon" className="size-11" />}
+      >
+        <span
+          aria-hidden="true"
+          className="flex size-8 items-center justify-center rounded-full bg-(--color-background-callout-surface) type-text-sm font-semibold text-primary"
+        >
+          {initials(user.name)}
+        </span>
+      </SheetTrigger>
+      <SheetContent
+        side="bottom"
+        showCloseButton={false}
+        className="mx-auto max-h-[calc(100%-24px)] max-w-lg overflow-y-auto pb-[env(safe-area-inset-bottom)]"
+      >
+        <SheetHeader className="flex-row items-center justify-between gap-3 pb-0">
+          <SheetTitle>Account</SheetTitle>
+          <SheetClose
+            render={<Button variant="ghost-primary" size="icon" className="size-11" aria-label="Close account" />}
+          >
+            <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
+          </SheetClose>
+        </SheetHeader>
+        <div className="flex items-center gap-3 px-4">
+          <span
+            aria-hidden="true"
+            className="flex size-11 flex-none items-center justify-center rounded-full bg-(--color-background-callout-surface) type-text-sm font-semibold"
+          >
+            {initials(user.name)}
+          </span>
+          <div className="min-w-0">
+            <p className="type-text-sm font-semibold wrap-break-word">{user.name}</p>
+            <SheetDescription className="capitalize">{user.role}</SheetDescription>
+          </div>
+        </div>
+        <SheetFooter className="pt-0">
+          <Button variant="outline-primary" className="h-11 w-full font-semibold" onClick={signOut}>
+            <HugeiconsIcon icon={Logout01Icon} aria-hidden="true" />
+            Sign out
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 function SectionShell({
   user,
   title,
-  banner,
-  toastId,
   action,
   polled,
   children,
 }: {
   user: User
   title: string
-  banner: ReactNode
-  toastId?: ActionToastId | undefined
   /** The screen's one solid action (agency: Post a shift), at the right end of the top bar. */
   action?: ReactNode
   /** The screen's main poll; the top bar says whether it is current. */
@@ -396,20 +446,9 @@ function SectionShell({
             <div className="hidden items-center gap-2 @max-[1000px]/section-shell:flex">
               <Image src="/brand/mark.svg" alt="" width={20} height={21} />
             </div>
-            <h1 className="min-w-0 flex-none truncate type-heading-xs">{title}</h1>
+            <h1 className="min-w-0 truncate type-heading-xs @max-[1000px]/section-shell:type-heading-sm">{title}</h1>
             {polled === undefined ? null : <LiveNote stale={polled.stale} updatedAt={polled.updatedAt} />}
-            {/* The one banner slot sits in the top bar (design canvas), so it never covers content. */}
-            {/* On a compact shell it drops just under the top bar instead; either way it overlays the content. */}
-            <div
-              className={cn(
-                "flex min-w-0 flex-1 justify-end",
-                "@max-[1000px]/section-shell:absolute @max-[1000px]/section-shell:inset-x-4 @max-[1000px]/section-shell:top-[calc(100%+8px)]",
-                "@max-[1000px]/section-shell:justify-stretch @max-[1000px]/section-shell:[&>*]:flex-1"
-              )}
-              aria-live="polite"
-            >
-              {banner}
-            </div>
+            <div className="min-w-0 flex-1" />
             {
               action === undefined ? null
                 // On a compact shell the action leaves the crowded bar and is pinned above the thumb (design canvas).
@@ -419,33 +458,13 @@ function SectionShell({
                 </div>
               )
             }
-            <div className="hidden w-56 @max-[1000px]/section-shell:flex">
-              <AccountMenu user={user} />
+            <div className="hidden flex-none @max-[1000px]/section-shell:flex">
+              <MobileAccountSheet user={user} />
             </div>
           </header>
           {children}
         </div>
       </div>
-      {toastId === undefined ? null : (
-        <Toaster
-          key={toastId}
-          position="top-right"
-          offset={{ top: 68, right: 24 }}
-          mobileOffset={{ top: 64, right: 16, left: 16 }}
-          visibleToasts={1}
-          duration={4000}
-          toastOptions={{
-            unstyled: true,
-            classNames: {
-              toast:
-                "flex w-fit max-w-full items-center gap-2 rounded-xl bg-success-surface px-gutter-md py-3 type-text-sm font-medium text-primary inset-ring inset-ring-border-success-surface focus-visible:outline-2! focus-visible:outline-ring!",
-            },
-          }}
-          icons={{
-            success: <HugeiconsIcon icon={Tick02Icon} className="size-5 text-icon-success" aria-hidden="true" />,
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -522,7 +541,7 @@ function usePoll<T>(
 /** The quiet line beside a polled section's heading while `stale`. Never a banner. */
 function StaleNote({ stale, updatedAt }: { stale: boolean; updatedAt: POSIX | null }) {
   if (!stale || updatedAt === null) return null
-  const at = updatedAt.toLocalDateAndTime(FACILITY_TIMEZONE).time.pretty().slice(0, 5)
+  const at = updatedAt.toUTCDateAndTime().time.pretty().slice(0, 5)
   return <p className="type-text-xs text-secondary tabular-nums">{`Couldn't refresh, showing ${at}`}</p>
 }
 
@@ -532,7 +551,7 @@ function StaleNote({ stale, updatedAt }: { stale: boolean; updatedAt: POSIX | nu
  */
 function LiveNote({ stale, updatedAt }: { stale: boolean; updatedAt: POSIX | null }) {
   if (updatedAt === null) return null
-  const at = updatedAt.toLocalDateAndTime(FACILITY_TIMEZONE).time.pretty().slice(0, 5)
+  const at = updatedAt.toUTCDateAndTime().time.pretty().slice(0, 5)
   return (
     <p className="flex flex-none items-center gap-1.5 type-text-xs text-secondary tabular-nums @max-[1000px]/section-shell:hidden">
       <span aria-hidden="true" className={cn("size-1.5 rounded-full", stale ? "bg-icon-warning" : "bg-icon-success")} />
@@ -552,17 +571,17 @@ function failureMessage(error: FetchError | string, offline: string): string {
 }
 
 type ActionToastId = ReturnType<typeof toast.success>
-type ActionNotice = Extract<Notice, { kind: "error" }> | { kind: "success"; toastId: ActionToastId }
+type ActionNotice = { kind: "error"; message: string } | { kind: "success" }
 
-type Banner = {
+type ActionFeedback = {
   notice: ActionNotice | null
   succeed: (message: string) => void
-  fail: (error: FetchError | string, offline: string) => void
+  fail: (error: FetchError | string, offline: string, action?: Action) => void
   clear: () => void
 }
 
-/** Errors stay in context. Sonner dismisses success confirmations automatically. */
-function useBanner(): Banner {
+/** Each outcome gets a fresh lifetime; retrying or leaving the screen dismisses it. */
+function useActionFeedback(): ActionFeedback {
   const [notice, setNotice] = useState<ActionNotice | null>(null)
   const activeToast = useRef<ActionToastId | undefined>(undefined)
   const dismiss = useCallback(() => {
@@ -576,15 +595,16 @@ function useBanner(): Banner {
       dismiss()
       const toastId = toast.success(message, { testId: "notification-banner" })
       activeToast.current = toastId
-      // Each success gets a fresh Toaster so an outgoing toast cannot overlap the next outcome.
-      setNotice({ kind: "success", toastId })
+      setNotice({ kind: "success" })
     },
     [dismiss]
   )
   const fail = useCallback(
-    (error: FetchError | string, offline: string) => {
+    (error: FetchError | string, offline: string, action?: Action) => {
       dismiss()
-      setNotice({ kind: "error", message: failureMessage(error, offline) })
+      const message = failureMessage(error, offline)
+      activeToast.current = toast.error(message, { testId: "notification-banner", action })
+      setNotice({ kind: "error", message })
     },
     [dismiss]
   )
@@ -593,16 +613,6 @@ function useBanner(): Banner {
     setNotice(null)
   }, [dismiss])
   return { notice, succeed, fail, clear }
-}
-
-function BannerSlot({ notice, action }: { notice: ActionNotice | null; action?: ReactNode }) {
-  if (notice?.kind !== "error") return null
-  return (
-    <div className="flex min-w-0 items-center gap-2">
-      <NotificationBanner data-testid="notification-banner" notice={notice} className="min-w-0" />
-      {action}
-    </div>
-  )
 }
 
 /**
@@ -658,11 +668,17 @@ function SectionHead({
         <div className="flex flex-wrap items-baseline gap-x-3">
           {/* The count sits beside the heading, not in it, so the section's name stays its title. */}
           <span className="flex items-baseline gap-1.5">
-            <h2 id={`${id}-title`} tabIndex={-1} className="type-heading-xs outline-none">
+            <h2
+              id={`${id}-title`}
+              tabIndex={-1}
+              className="type-heading-xs outline-none @max-[559px]/section-shell:type-heading-md"
+            >
               {title}
             </h2>
             {count === undefined ? null : (
-              <span className="type-heading-xs font-normal text-secondary tabular-nums">{count.toLocaleString()}</span>
+              <span className="type-heading-xs font-normal text-secondary tabular-nums @max-[559px]/section-shell:type-heading-md @max-[559px]/section-shell:font-normal">
+                {count.toLocaleString()}
+              </span>
             )}
           </span>
           {polled === undefined ? null : <StaleNote stale={polled.stale} updatedAt={polled.updatedAt} />}
@@ -722,33 +738,40 @@ const overnight = (shift: ShiftTimes): boolean => shift.endTime < shift.startTim
 const timesLabel = (shift: ShiftTimes): string =>
   `${shift.startTime} to ${shift.endTime}${overnight(shift) ? " next day" : ""}`
 
-const minutesOf = (time: string): number => {
-  const [hours = 0, minutes = 0] = time.split(":").map(Number)
-  return hours * 60 + minutes
-}
-
 /** Scheduled hours as the server counts them (FR-9.2): end minus start, plus a day when it runs overnight. */
 function hoursOf(shift: ShiftTimes): number {
-  const span = minutesOf(shift.endTime) - minutesOf(shift.startTime)
-  return (span < 0 ? span + 24 * 60 : span) / 60
+  return scheduledDuration(shift.startTime, shift.endTime).asHours()
+}
+
+/** Compact card copy keeps partial hours readable without changing timesheet numbers. */
+function scheduledDurationLabel(shift: ShiftTimes): string {
+  const minutes = scheduledDuration(shift.startTime, shift.endTime).asMinutes()
+  const hours = Math.floor(minutes / 60)
+  const remainder = minutes % 60
+  if (hours === 0) return `${minutes} min scheduled`
+  return `${hours} h${remainder === 0 ? "" : ` ${remainder} min`} scheduled`
 }
 
 /** The quiet word beside a day group's date. */
 function dayRel(date: string): string | null {
-  const today = facilityToday().pretty()
+  const today = DateOnly.todayUTC().pretty()
   if (date === today) return "Today"
-  if (date === facilityToday().addDays(1).pretty()) return "Tomorrow"
+  if (date === DateOnly.todayUTC().addDays(1).pretty()) return "Tomorrow"
   return date < today ? "Past date" : null
 }
 
 /** Upcoming days first unless the caller lists shifts newest first. */
-function byDay<T extends ShiftTimes & { date: string }>(
+function groupAndSortShiftsByDay<T extends ShiftTimes & { date: string }>(
   rows: ReadonlyArray<T>,
   newestFirst: boolean
 ): ReadonlyArray<{ date: string; rows: ReadonlyArray<T> }> {
-  const today = facilityToday().pretty()
+  const today = DateOnly.todayUTC().pretty()
   const groups = new Map<string, Array<T>>()
-  for (const row of rows) groups.set(row.date, [...(groups.get(row.date) ?? []), row])
+  for (const row of rows) {
+    const group = groups.get(row.date)
+    if (group === undefined) groups.set(row.date, [row])
+    else group.push(row)
+  }
   const dates = [...groups.keys()].sort((a, b) => {
     if (newestFirst) return b.localeCompare(a)
     const pastA = a < today
@@ -852,14 +875,14 @@ function ShiftLedger<T extends Shift>({
 }) {
   return (
     <div className={cn(surfaceCard, "@container/ledger")}>
-      {byDay(rows, newestFirst).map((day) => {
+      {groupAndSortShiftsByDay(rows, newestFirst).map((day) => {
         const rel = dayRel(day.date)
         return (
           <div
             key={day.date}
             className="relative not-first:before:absolute not-first:before:inset-x-0 not-first:before:top-0 not-first:before:h-px not-first:before:scale-y-50 not-first:before:bg-(--color-border)"
           >
-            <h3 className="flex gap-1.5 px-4 pt-3 type-text-xs font-semibold text-secondary tabular-nums">
+            <h3 className="flex flex-wrap gap-x-1.5 px-4 pt-3 type-text-xs font-semibold text-secondary tabular-nums @max-[559px]/ledger:type-text-sm @max-[559px]/ledger:font-semibold">
               <span>{dayLabel(day.date)}</span>
               {rel === null ? null : <span className="font-normal">{rel}</span>}
             </h3>
@@ -873,7 +896,7 @@ function ShiftLedger<T extends Shift>({
 
 const shiftRow = cva(
   cn(
-    "relative grid min-h-15 items-center gap-x-4 gap-y-2 px-4 py-2 outline-none",
+    "relative grid min-h-15 items-center gap-x-4 gap-y-2 px-4 py-2 outline-none @max-[559px]/ledger:gap-y-3 @max-[559px]/ledger:py-4",
     "not-first:before:absolute not-first:before:inset-x-4 not-first:before:top-0 not-first:before:h-px not-first:before:scale-y-50 not-first:before:bg-(--color-border-subtle)",
     "transition-colors duration-(--transition-duration-relaxed) ease-basic data-new:bg-info-soft",
     "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
@@ -882,10 +905,9 @@ const shiftRow = cva(
     variants: {
       columns: {
         // when | what | status | actions
-        status:
-          "grid-cols-[minmax(190px,1fr)_minmax(0,1.2fr)_56px_minmax(0,auto)] @max-[559px]/ledger:grid-cols-[minmax(0,1fr)_auto]",
+        status: "grid-cols-[minmax(190px,1fr)_minmax(0,1.2fr)_56px_minmax(0,auto)] @max-[559px]/ledger:grid-cols-1",
         // when | what | actions (the section identifies the status)
-        plain: "grid-cols-[minmax(190px,1fr)_minmax(0,1.1fr)_auto] @max-[559px]/ledger:grid-cols-[minmax(0,1fr)_auto]",
+        plain: "grid-cols-[minmax(190px,1fr)_minmax(0,1.1fr)_auto] @max-[559px]/ledger:grid-cols-1",
       },
     },
     defaultVariants: { columns: "status" },
@@ -902,6 +924,7 @@ function ShiftRow({
   note,
   actions,
   columns,
+  hideMobileStatus = false,
   className,
   ...rest
 }: {
@@ -909,6 +932,7 @@ function ShiftRow({
   who: ReactNode
   note?: ReactNode
   actions?: ReactNode
+  hideMobileStatus?: boolean
 } & VariantProps<typeof shiftRow> &
   Omit<ComponentProps<"article">, "children">) {
   return (
@@ -920,26 +944,41 @@ function ShiftRow({
           aria-hidden="true"
         />
         <div className="flex min-w-0 flex-col">
-          <span className="font-medium tabular-nums">
+          <span className="font-medium tabular-nums @max-[559px]/ledger:type-heading-sm">
             <span className="sr-only">{`${shift.date}, `}</span>
-            {timesLabel(shift)}
+            <span>{`${shift.startTime} to ${shift.endTime}`}</span>
+            {overnight(shift) ?
+              <span className="@max-[559px]/ledger:hidden"> next day</span>
+            : null}
           </span>
-          <span className="type-text-xs text-secondary">{`${hoursOf(shift).toLocaleString()} scheduled hours`}</span>
+          <span className="type-text-xs text-secondary @max-[559px]/ledger:hidden">{`${hoursOf(shift).toLocaleString()} scheduled hours`}</span>
+          <span className="hidden type-text-sm text-secondary @max-[559px]/ledger:block">
+            {`${overnight(shift) ? "Ends next day · " : ""}${scheduledDurationLabel(shift)}`}
+          </span>
         </div>
       </div>
-      <div className="flex min-w-0 flex-col @max-[559px]/ledger:col-start-1">
-        <span className="font-medium">{shift.role}</span>
-        {who}
-        {note}
+      <div className="flex min-w-0 flex-col gap-0 @max-[559px]/ledger:gap-1">
+        <div className="flex min-w-0 flex-col @max-[559px]/ledger:flex-row @max-[559px]/ledger:items-baseline @max-[559px]/ledger:gap-1.5 @max-[559px]/ledger:type-text-sm">
+          <span className="flex-none font-medium">{shift.role}</span>
+          <span aria-hidden="true" className="hidden text-secondary @max-[559px]/ledger:inline">
+            ·
+          </span>
+          <div className="min-w-0 @max-[559px]/ledger:wrap-break-word [&>*]:block @max-[559px]/ledger:[&>*]:overflow-visible @max-[559px]/ledger:[&>*]:whitespace-normal">
+            {who}
+          </div>
+        </div>
+        <div className="empty:hidden @max-[559px]/ledger:[&>*]:type-text-sm">{note}</div>
       </div>
       {columns === "plain" ? null : (
-        <div className="@max-[559px]/ledger:col-start-2 @max-[559px]/ledger:row-start-1 @max-[559px]/ledger:justify-self-end">
+        <div className={cn("justify-self-start", hideMobileStatus && "@max-[559px]/ledger:hidden")}>
           <StatusBadge status={shift.status} />
         </div>
       )}
-      <div className="flex items-center justify-end gap-1 @max-[559px]/ledger:col-start-2 @max-[559px]/ledger:row-start-2">
-        {actions}
-      </div>
+      {actions == null ? null : (
+        <div className="flex items-center justify-end gap-1 @max-[559px]/ledger:w-full @max-[559px]/ledger:[&>button]:h-11 @max-[559px]/ledger:[&>button]:type-text-sm @max-[559px]/ledger:[&>button]:font-semibold @max-[559px]/ledger:[&>button:first-child]:flex-1 @max-[559px]/ledger:[&>button[data-size=icon-sm]]:w-11">
+          {actions}
+        </div>
+      )}
     </article>
   )
 }
@@ -985,7 +1024,7 @@ function TimesheetTable({ timesheet }: { timesheet: Polled<ReadonlyArray<Timeshe
         <p className="type-text-sm text-primary">No scheduled hours yet</p>
         <p className="mt-1 type-text-sm text-secondary">Hours appear when a shift is filled.</p>
       </>
-    : <span className={cn("shiftpatch-page-shimmer", "type-text-sm")}>Loading scheduled hours</span>
+    : <span className={cn(loadingText, "type-text-sm")}>Loading scheduled hours</span>
   return (
     <section id="hours" aria-labelledby="hours-title" className="flex scroll-mt-17 flex-col gap-3">
       <SectionHead
@@ -999,7 +1038,7 @@ function TimesheetTable({ timesheet }: { timesheet: Polled<ReadonlyArray<Timeshe
         columns={TIMESHEET_COLUMNS}
         columnOrder={["nurse", "agency", "date", "times", "hours"]}
         rows={rows.map((r) => ({
-          key: r.shiftId,
+          key: r.shiftId.value,
           value: r,
           contents: {
             nurse: r.nurseName,
@@ -1041,7 +1080,7 @@ function focusLater(selector: string, fallbackSelector?: string): void {
 function NurseScreen({ user }: { user: User }) {
   const shifts = usePoll(loadShifts, [user.id.value])
   const credential = usePoll(loadCredential, [user.id.value])
-  const banner = useBanner()
+  const feedback = useActionFeedback()
   const { run } = useSingleFlight()
   const [renewalOpen, setRenewalOpen] = useState<boolean | null>(null)
   const focusAfterCommit = useRef<string | null>(null)
@@ -1064,33 +1103,46 @@ function NurseScreen({ user }: { user: User }) {
   ) =>
     task.bimap(
       (error) => {
-        banner.fail(error, offline)
+        feedback.fail(
+          error,
+          offline,
+          failureMessage(error, offline) === EXPIRED_MESSAGE ?
+            {
+              label: "Upload renewal",
+              onClick: (event) => {
+                // Let Sonner restore its previous focus before moving into the renewal form.
+                event.currentTarget.blur()
+                toUpload()
+              },
+            }
+          : undefined
+        )
         refreshAll()
         return error
       },
       (value) => {
         focusAfterCommit.current = focus(value)
-        shifts.updateAndRefresh((rows) => rows.map((row) => (row.id === value.id ? value : row)))
+        shifts.updateAndRefresh((rows) => rows.map((row) => (row.id.value === value.id.value ? value : row)))
         credential.refresh()
-        banner.succeed(succeeded)
+        feedback.succeed(succeeded)
         return value
       }
     )
 
   // Claim and cancel never pass `loading`, so the buttons stay enabled (FR-4.2); single-flight drops repeat presses.
   const claim = (shift: Shift): void =>
-    run(`claim:${shift.id}`, () => {
-      banner.clear()
+    run(`claim:${shift.id.value}`, () => {
+      feedback.clear()
       return report(
         call(api.claimShift, { id: shift.id }, {}),
         "Shift claimed",
         "Couldn't claim shift, try again",
-        (updated) => `[data-mine="${updated.id}"]`
+        (updated) => `[data-mine="${updated.id.value}"]`
       )
     })
   const cancel = (shift: Shift): void =>
-    run(`cancel:${shift.id}`, () => {
-      banner.clear()
+    run(`cancel:${shift.id.value}`, () => {
+      feedback.clear()
       // FR-6.8: a nurse's cancel is always "advance".
       return report(
         call(api.cancelShift, { id: shift.id }, { reason: "advance" }).map(
@@ -1108,33 +1160,15 @@ function NurseScreen({ user }: { user: User }) {
   }
 
   const summary = credential.data instanceof Ready ? credential.data.value : null
-  const blocked = banner.notice?.kind === "error" && banner.notice.message === EXPIRED_MESSAGE
   return (
-    <SectionShell
-      user={user}
-      title="Shifts"
-      polled={shifts}
-      toastId={banner.notice?.kind === "success" ? banner.notice.toastId : undefined}
-      banner={
-        <BannerSlot
-          notice={banner.notice}
-          action={
-            blocked ?
-              <Button variant="ghost-primary" size="sm" onClick={toUpload}>
-                Upload renewal
-              </Button>
-            : undefined
-          }
-        />
-      }
-    >
+    <SectionShell user={user} title="Shifts" polled={shifts}>
       <div className={cn(riseIn, pageBody, "@container/cols")}>
         <OpenShifts polled={shifts} credential={summary} onClaim={claim} />
         <div className="grid grid-cols-1 gap-6 @min-[880px]/cols:grid-cols-2">
-          <YourShifts polled={shifts} nurseId={user.id.value} onCancel={cancel} />
+          <YourShifts polled={shifts} nurseId={user.id} onCancel={cancel} />
           <CredentialPanel
             polled={credential}
-            banner={banner}
+            feedback={feedback}
             onUploaded={refreshAll}
             renewalOpen={renewalOpen}
             onRenewalOpenChange={setRenewalOpen}
@@ -1214,8 +1248,9 @@ function OpenShifts({
               const short = approved !== null && approved.state === "valid" && endsAfter(shift, approved.expiresOn)
               return (
                 <ShiftRow
-                  key={shift.id}
+                  key={shift.id.value}
                   data-testid="shift-list-item"
+                  hideMobileStatus
                   shift={shift}
                   who={<span className="truncate type-text-sm text-secondary">{shift.agencyName}</span>}
                   note={
@@ -1254,12 +1289,12 @@ function YourShifts({
   onCancel,
 }: {
   polled: Polled<ReadonlyArray<Shift>>
-  nurseId: string
+  nurseId: User["id"]
   onCancel: (shift: Shift) => void
 }) {
   const data = polled.data
-  const mine = data instanceof Ready ? data.value.filter((shift) => shift.claimedBy === nurseId) : []
-  const today = facilityToday().pretty()
+  const mine = data instanceof Ready ? data.value.filter((shift) => shift.claimedBy?.value === nurseId.value) : []
+  const today = DateOnly.todayUTC().pretty()
   return (
     <section id="mine" aria-labelledby="mine-title" className="flex scroll-mt-17 flex-col gap-3">
       <SectionHead id="mine" title="Your shifts" polled={polled} />
@@ -1275,9 +1310,9 @@ function YourShifts({
             newestFirst
             renderRow={(shift) => (
               <ShiftRow
-                key={shift.id}
+                key={shift.id.value}
                 shift={shift}
-                data-mine={shift.id}
+                data-mine={shift.id.value}
                 tabIndex={-1}
                 columns="plain"
                 who={<span className="truncate type-text-sm text-secondary">{shift.agencyName}</span>}
@@ -1356,13 +1391,13 @@ function CredentialHeading({
 /** Status first: the credential used for claims stays separate from renewal activity. */
 function CredentialPanel({
   polled,
-  banner,
+  feedback,
   onUploaded,
   renewalOpen,
   onRenewalOpenChange,
 }: {
   polled: Polled<CredentialSummary>
-  banner: Banner
+  feedback: ActionFeedback
   onUploaded: (next?: CredentialSummary) => void
   renewalOpen: boolean | null
   onRenewalOpenChange: (open: boolean) => void
@@ -1373,7 +1408,7 @@ function CredentialPanel({
   const latest = summary?.latest ?? null
   const valid = approved?.state === "valid"
   const inReview = latest?.status === "pending"
-  const soon = valid && approved.expiresOn.compare(facilityToday().addDays(30)) < 0
+  const soon = valid && approved.expiresOn.compare(DateOnly.todayUTC().addDays(30)) < 0
   const needsCredential = summary !== null && !valid && !inReview
   const expanded = renewalOpen ?? needsCredential
   const renewalLabel =
@@ -1490,7 +1525,7 @@ function CredentialPanel({
           <div id="credential-renewal-form" ref={renewalForm} hidden={!expanded}>
             <CredentialForm
               solid={needsCredential}
-              banner={banner}
+              feedback={feedback}
               onUploaded={(next) => {
                 onUploaded(next)
                 if (next === undefined) return
@@ -1512,11 +1547,11 @@ function CredentialPanel({
 
 function CredentialForm({
   solid,
-  banner,
+  feedback,
   onUploaded,
 }: {
   solid: boolean
-  banner: Banner
+  feedback: ActionFeedback
   onUploaded: (next?: CredentialSummary) => void
 }) {
   const [file, setFile] = useState<File | null>(null)
@@ -1540,15 +1575,18 @@ function CredentialForm({
   const send = (event: FormEvent) =>
     void onSubmit((values) => {
       if (submit.isLoading) return
-      // Field errors only before sending: no request, banner untouched.
-      if (file === null) return setFileError("Choose a document to upload")
-      if (file.size > api.uploadCredential.maxBytes) return setFileError("File must be 4 MB or smaller")
-      banner.clear()
+      if (file === null || file.size > api.uploadCredential.maxBytes) {
+        const error = file === null ? "Choose a document to upload" : "File must be 4 MB or smaller"
+        setFileError(error)
+        feedback.fail(error, "Couldn't upload document, try again")
+        return
+      }
+      feedback.clear()
       setSubmit(Loading())
       cancel.current = upload(api.uploadCredential, file, { "X-Expiry-Date": values.expiry }).fork(
         (error) => {
           setSubmit(NotAsked())
-          banner.fail(error, "Couldn't upload document, try again") // the file and date stay
+          feedback.fail(error, "Couldn't upload document, try again") // the file and date stay
           onUploaded()
         },
         (next) => {
@@ -1556,7 +1594,7 @@ function CredentialForm({
           setFile(null)
           setAttempt((n) => n + 1)
           reset()
-          banner.succeed("Credential submitted for review")
+          feedback.succeed("Credential submitted for review")
           onUploaded(next)
         }
       )
@@ -1603,15 +1641,15 @@ const CANCEL_REASONS = [
  * The two polls can disagree after a cancel and reclaim, so a timesheet row names the cover only while its nurse still
  * holds the shift; otherwise the card falls back to "Covered by a nurse".
  */
-const coverKey = (shiftId: string, nurseId: string): string => `${shiftId}:${nurseId}`
+const coverKey = (shiftId: Shift["id"], nurseId: User["id"]): string => `${shiftId.value}:${nurseId.value}`
 
 /** FR-1.10: posting, the agency's own shifts with cancel, and scheduled hours on one screen. Each section polls. */
 function AgencyScreen({ user }: { user: User }) {
-  const agencyId = user.id.value
-  const shifts = usePoll(() => call(api.agencyShifts, { agencyId }).map(({ shifts }) => shifts), [agencyId])
+  const agencyId = user.id
+  const shifts = usePoll(() => call(api.agencyShifts, { agencyId }).map(({ shifts }) => shifts), [agencyId.value])
   // FR-2.11's covering nurse: a Shift carries only `claimedBy`, and the agency-scoped timesheet names it (FR-9.3).
-  const covers = usePoll(loadTimesheet, [agencyId])
-  const banner = useBanner()
+  const covers = usePoll(loadTimesheet, [agencyId.value])
+  const feedback = useActionFeedback()
   const { run } = useSingleFlight()
   const [posting, setPosting] = useState(false)
   const [openings, setOpenings] = useState(0)
@@ -1631,31 +1669,31 @@ function AgencyScreen({ user }: { user: User }) {
   const posted = (shift: Shift): void => {
     setPosting(false)
     setFilter("all")
-    setJustPosted(shift.id)
+    setJustPosted(shift.id.value)
     // A poll that landed while the POST was in flight may already hold it.
-    shifts.updateAndRefresh((rows) => (rows.some((row) => row.id === shift.id) ? rows : [...rows, shift]))
+    shifts.updateAndRefresh((rows) => (rows.some((row) => row.id.value === shift.id.value) ? rows : [...rows, shift]))
     window.requestAnimationFrame(() => {
-      const row = document.querySelector(`[data-row="${shift.id}"]`)
+      const row = document.querySelector(`[data-row="${shift.id.value}"]`)
       if (row !== null && "scrollIntoView" in row) row.scrollIntoView({ block: "nearest" }) // jsdom has none
     })
     focusLater('[data-testid="agency-post-shift-button"]')
   }
-  // FR-6.7 and FR-6.8: one click cancels in advance; the menu beside it records a no-show. No confirmation step.
+  // FR-6.7 and FR-6.8: one click cancels in advance; the menu beside it chooses a reason.
   const cancel = (shift: Shift, reason: CancelReason): void =>
-    run(`cancel:${shift.id}`, () => {
-      banner.clear()
+    run(`cancel:${shift.id.value}`, () => {
+      feedback.clear()
       return call(api.cancelShift, { id: shift.id }, { reason }).bimap(
         (error) => {
-          banner.fail(error, "Couldn't cancel shift, try again")
+          feedback.fail(error, "Couldn't cancel shift, try again")
           refreshAll()
           return error
         },
         ({ cancellation: _cancellation, ...updated }) => {
-          shifts.updateAndRefresh((rows) => rows.map((row) => (row.id === updated.id ? updated : row)))
+          shifts.updateAndRefresh((rows) => rows.map((row) => (row.id.value === updated.id.value ? updated : row)))
           covers.refresh()
-          banner.succeed("Shift cancelled, now open")
+          feedback.succeed("Shift cancelled, now open")
           focusLater(
-            `[data-row="${updated.id}"]`,
+            `[data-row="${updated.id.value}"]`,
             '#agency-shifts [aria-label="Filter shifts by status"] input:checked'
           )
           return updated
@@ -1673,9 +1711,6 @@ function AgencyScreen({ user }: { user: User }) {
       user={user}
       title="Shifts"
       polled={shifts}
-      toastId={banner.notice?.kind === "success" ? banner.notice.toastId : undefined}
-      // While the sheet is open the banner reports inside it, above Post shift (design canvas).
-      banner={posting ? null : <BannerSlot notice={banner.notice} />}
       action={
         <Button
           data-testid="agency-post-shift-button"
@@ -1683,7 +1718,7 @@ function AgencyScreen({ user }: { user: User }) {
           aria-expanded={posting}
           disabled={sending}
           onClick={() => {
-            banner.clear()
+            feedback.clear()
             setOpenings((n) => n + 1)
             setPosting(true)
           }}
@@ -1713,7 +1748,7 @@ function AgencyScreen({ user }: { user: User }) {
         open={posting}
         agencyName={user.name}
         own={own}
-        banner={banner}
+        feedback={feedback}
         onClose={() => setPosting(false)}
         onSending={setSending}
         onPosted={posted}
@@ -1788,10 +1823,10 @@ function AgencyShifts({
               const nurse = shift.claimedBy === null ? null : (names.get(coverKey(shift.id, shift.claimedBy)) ?? null)
               return (
                 <ShiftRow
-                  key={shift.id}
+                  key={shift.id.value}
                   shift={shift}
-                  data-row={shift.id}
-                  data-new={shift.id === justPosted ? "" : undefined}
+                  data-row={shift.id.value}
+                  data-new={shift.id.value === justPosted ? "" : undefined}
                   tabIndex={-1}
                   who={
                     shift.claimedBy === null ?
@@ -1802,7 +1837,7 @@ function AgencyShifts({
                       </span>
                   }
                   note={
-                    shift.id === justPosted ?
+                    shift.id.value === justPosted ?
                       <span className="flex items-center gap-1 type-text-xs text-secondary">
                         <HugeiconsIcon icon={Tick02Icon} className="size-3.5" aria-hidden="true" />
                         Just posted
@@ -1823,8 +1858,8 @@ function AgencyShifts({
 }
 
 /**
- * Design AgencyCancelPattern: Cancel shift cancels in advance in one click (FR-6.8's default). The chevron opens the
- * reasons, and each one cancels straight away, so nothing hides in a preselected value.
+ * Design AgencyCancelPattern: one click cancels in advance (FR-6.8's default). The chevron opens the reasons,
+ * and each menu choice cancels immediately.
  */
 function CancelWithReason({
   shift,
@@ -1944,7 +1979,7 @@ const MONTH_NAMES = [
 function MonthPicker({ value, onPick }: { value: string; onPick: (date: string) => void }) {
   const [year = 0, month = 1] = value.split("-").map(Number)
   const [shown, setShown] = useState(() => new DateOnly(year, month, 1))
-  const today = facilityToday().pretty()
+  const today = DateOnly.todayUTC().pretty()
   const lead = new Date(Date.UTC(shown.year, shown.month - 1, 1)).getUTCDay()
   const length = new Date(Date.UTC(shown.year, shown.month, 0)).getUTCDate()
   const days = Array.from({ length }, (_, offset) => shown.addDays(offset).pretty())
@@ -2016,7 +2051,7 @@ function PostShiftSheet({
   open,
   agencyName,
   own,
-  banner,
+  feedback,
   onClose,
   onSending,
   onPosted,
@@ -2024,7 +2059,7 @@ function PostShiftSheet({
   open: boolean
   agencyName: string
   own: ReadonlyArray<Shift>
-  banner: Banner
+  feedback: ActionFeedback
   onClose: () => void
   onSending: (sending: boolean) => void
   onPosted: (shift: Shift) => void
@@ -2033,7 +2068,7 @@ function PostShiftSheet({
   // values because the sheet stays open.
   const [draft, setDraft] = useState<Draft>(() => ({
     role: "RN",
-    date: facilityToday().addDays(1).pretty(),
+    date: DateOnly.todayUTC().addDays(1).pretty(),
     pattern: "day",
     startTime: "07:00",
     endTime: "19:00",
@@ -2046,11 +2081,11 @@ function PostShiftSheet({
   const edit = (next: Partial<Draft>): void => {
     setDraft((prev) => ({ ...prev, ...next }))
     setErrors({})
-    if (banner.notice?.kind === "error") banner.clear()
+    if (feedback.notice?.kind === "error") feedback.clear()
   }
   const times = draftTimes(draft)
   const valid = Object.keys(draftErrors(times)).length === 0
-  const today = facilityToday().pretty()
+  const today = DateOnly.todayUTC().pretty()
   const duplicate =
     valid &&
     own.some(
@@ -2067,31 +2102,49 @@ function PostShiftSheet({
     if (submit.isLoading) return
     const found = draftErrors(times)
     setErrors(found)
-    if (found.startTime !== undefined || found.endTime !== undefined) {
+    const error = found.startTime ?? found.endTime
+    if (error !== undefined) {
+      // Format before moving focus so the blur handler cannot clear this validation.
+      setDraft((current) => ({ ...current, startTime: times.startTime, endTime: times.endTime }))
+      feedback.fail(error, "Couldn't post shift, try again")
       focusLater(found.startTime === undefined ? "#post-shift-end" : "#post-shift-start")
       return
     }
     const body: NewShift = { role: draft.role, date: draft.date, ...times }
-    banner.clear()
+    feedback.clear()
     setSubmit(Loading())
     onSending(true)
     cancel.current = call(api.postShift, body).fork(
       (error) => {
         setSubmit(NotAsked())
         onSending(false)
-        banner.fail(error, "Couldn't post shift, try again") // the values stay
+        feedback.fail(error, "Couldn't post shift, try again") // the values stay
       },
       (shift) => {
         setSubmit(NotAsked())
         onSending(false)
-        banner.succeed(`Shift posted: ${shift.role}, ${shift.date}, ${shift.startTime} to ${shift.endTime}`)
+        feedback.succeed(`Shift posted: ${shift.role}, ${shift.date}, ${shift.startTime} to ${shift.endTime}`)
         onPosted(shift)
       }
     )
   }
 
   return (
-    <Sheet open={open} onOpenChange={(next) => (next || submit.isLoading ? undefined : onClose())}>
+    <Sheet
+      open={open}
+      onOpenChange={(next, details) => {
+        const target = details.event.target
+        if (
+          details.reason === "outside-press" &&
+          target instanceof Element &&
+          target.closest("[data-sonner-toaster]")
+        ) {
+          details.cancel()
+          return
+        }
+        if (!next && !submit.isLoading) onClose()
+      }}
+    >
       <SheetContent showCloseButton={false} className="gap-0 overflow-hidden">
         <form
           id="post-shift"
@@ -2169,7 +2222,6 @@ function PostShiftSheet({
             </fieldset>
           </ScrollArea>
           <SheetFooter className="mt-0 gap-3 border-t-[0.5px] border-default px-4 pt-3 pb-4">
-            <BannerSlot notice={banner.notice} />
             <ReviewLine draft={draft} />
             <Button
               type="submit"
@@ -2240,7 +2292,7 @@ function Callout({
 function DateStrip({ value, onChange }: { value: string; onChange: (date: string) => void }) {
   const [picking, setPicking] = useState(false)
   const name = useId()
-  const today = facilityToday()
+  const today = DateOnly.todayUTC()
   const days = Array.from({ length: STRIP_DAYS }, (_, offset) => today.addDays(offset).pretty())
   const index = days.indexOf(value)
   return (
@@ -2468,33 +2520,27 @@ const loadPendingCredentials = (): Future<FetchError, ReadonlyArray<PendingCrede
 function AdminScreen({ user }: { user: User }) {
   const shifts = usePoll(loadAdminShifts, [user.id.value])
   const credentials = usePoll(loadPendingCredentials, [user.id.value])
-  const banner = useBanner()
+  const feedback = useActionFeedback()
   const { run, busy } = useSingleFlight()
-  const review = (id: string, decision: CredentialDecision): void =>
-    run(id, () => {
-      banner.clear()
+  const review = (id: PendingCredential["id"], decision: CredentialDecision): void =>
+    run(id.value, () => {
+      feedback.clear()
       return call(api.reviewCredential, { id }, { decision }).bimap(
         (error) => {
-          banner.fail(error, "Couldn't review credential, try again")
+          feedback.fail(error, "Couldn't review credential, try again")
           credentials.refresh()
           return error
         },
         (reviewed) => {
-          credentials.updateAndRefresh((rows) => rows.filter((row) => row.id !== reviewed.id))
-          banner.succeed(reviewed.status === "approved" ? "Credential approved" : "Credential rejected")
+          credentials.updateAndRefresh((rows) => rows.filter((row) => row.id.value !== reviewed.id.value))
+          feedback.succeed(reviewed.status === "approved" ? "Credential approved" : "Credential rejected")
           focusLater("#credential-review-title")
           return reviewed
         }
       )
     })
   return (
-    <SectionShell
-      user={user}
-      title="Coverage"
-      banner={<BannerSlot notice={banner.notice} />}
-      toastId={banner.notice?.kind === "success" ? banner.notice.toastId : undefined}
-      polled={shifts}
-    >
+    <SectionShell user={user} title="Coverage" polled={shifts}>
       <div className={cn(riseIn, pageBody)}>
         <CoverageSection shifts={shifts} />
         <CredentialReviewSection credentials={credentials} busy={busy} onReview={review} />
@@ -2531,7 +2577,7 @@ function CredentialReviewSection({
 }: {
   credentials: Polled<ReadonlyArray<PendingCredential>>
   busy: ReadonlySet<string>
-  onReview: (id: string, decision: CredentialDecision) => void
+  onReview: (id: PendingCredential["id"], decision: CredentialDecision) => void
 }) {
   const [sort, setSort] = useState<SortState>({ sorting: "increasing", column: "submitted" })
   const data = credentials.data
@@ -2544,7 +2590,7 @@ function CredentialReviewSection({
         <p className="mt-1 type-text-sm text-secondary">New nurse uploads appear here.</p>
       </>
     : data instanceof Loading || data instanceof NotAsked ?
-      <span className={cn("shiftpatch-page-shimmer", "type-text-sm")}>Loading pending credentials</span>
+      <span className={cn(loadingText, "type-text-sm")}>Loading pending credentials</span>
     : (data satisfies never)
   return (
     <section
@@ -2564,7 +2610,7 @@ function CredentialReviewSection({
         columns={CREDENTIAL_REVIEW_COLUMNS}
         columnOrder={["nurse", "expiry", "submitted", "document", "actions"]}
         rows={rows.map((row) => ({
-          key: row.id,
+          key: row.id.value,
           value: row,
           contents: {
             nurse: row.nurseName,
@@ -2576,7 +2622,7 @@ function CredentialReviewSection({
                   {row.fileName}
                 </span>
                 <a
-                  href={`/api/credentials/uploads/${encodeURIComponent(row.id)}/document`}
+                  href={`/api/credentials/uploads/${encodeURIComponent(row.id.value)}/document`}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`View document for ${row.nurseName}`}
@@ -2591,7 +2637,7 @@ function CredentialReviewSection({
                 <Button
                   size="sm"
                   variant="outline-primary"
-                  disabled={busy.has(row.id)}
+                  disabled={busy.has(row.id.value)}
                   aria-label={`Approve credential for ${row.nurseName}`}
                   onClick={() => onReview(row.id, "approved")}
                 >
@@ -2600,7 +2646,7 @@ function CredentialReviewSection({
                 <Button
                   size="sm"
                   variant="outline-danger"
-                  disabled={busy.has(row.id)}
+                  disabled={busy.has(row.id.value)}
                   aria-label={`Reject credential for ${row.nurseName}`}
                   onClick={() => onReview(row.id, "rejected")}
                 >
@@ -2680,7 +2726,7 @@ function CoverageSection({ shifts }: { shifts: Polled<ReadonlyArray<AdminShift>>
           <p className="type-text-sm text-primary">No shifts yet</p>
           <p className="mt-1 type-text-sm text-secondary">Coverage appears here as agencies post them.</p>
         </>
-    : <span className={cn("shiftpatch-page-shimmer", "type-text-sm")}>Loading shifts</span>
+    : <span className={cn(loadingText, "type-text-sm")}>Loading shifts</span>
   return (
     <section id="coverage" aria-labelledby="coverage-title" className="flex scroll-mt-17 flex-col gap-4">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -2705,7 +2751,7 @@ function CoverageSection({ shifts }: { shifts: Polled<ReadonlyArray<AdminShift>>
         columns={COVERAGE_COLUMNS}
         columnOrder={["agency", "role", "date", "times", "nurse", "status"]}
         rows={rows.map((r) => ({
-          key: r.id,
+          key: r.id.value,
           value: r,
           contents: {
             agency: r.agencyName,
@@ -2733,9 +2779,9 @@ const AUDIT_COLUMNS = {
   previous: new ColumnDef<AuditEntry>({ label: "Previous nurse", sortFun: null }),
 } satisfies ColumnsConfig<AuditEntry>
 
-/** Facility-local `2026-10-03 07:00`, sans with tabular-nums. */
+/** UTC `2026-10-03 07:00`, sans with tabular-nums. */
 function auditTime(at: POSIX): string {
-  const { date, time } = at.toLocalDateAndTime(FACILITY_TIMEZONE)
+  const { date, time } = at.toUTCDateAndTime()
   return `${date.pretty()} ${time.pretty().slice(0, 5)}`
 }
 
@@ -2791,7 +2837,7 @@ function AuditSection({ user }: { user: User }) {
           <p className="type-text-sm text-primary">No activity yet</p>
           <p className="mt-1 type-text-sm text-secondary">Posts, claims, cancellations and reviews appear here.</p>
         </>
-    : <span className={cn("shiftpatch-page-shimmer", "type-text-sm")}>Loading the audit log</span>
+    : <span className={cn(loadingText, "type-text-sm")}>Loading the audit log</span>
   return (
     <section id="audit" aria-labelledby="audit-title" className="flex scroll-mt-17 flex-col gap-3">
       <SectionHead
@@ -2808,11 +2854,12 @@ function AuditSection({ user }: { user: User }) {
         columns={AUDIT_COLUMNS}
         columnOrder={["time", "actor", "action", "record", "reason", "previous"]}
         rows={rows.map((e) => ({
-          key: e.id,
+          key: e.id.value,
           value: e,
           contents: {
             time: <span className="tabular-nums">{auditTime(e.at)}</span>,
-            actor: e.actorName ?? (e.actorId === null ? "System" : <span className="font-mono">{e.actorId}</span>),
+            actor:
+              e.actorName ?? (e.actorId === null ? "System" : <span className="font-mono">{e.actorId.value}</span>),
             action: (
               <span className="inline-flex items-center gap-1.5">
                 <HugeiconsIcon
@@ -2825,7 +2872,7 @@ function AuditSection({ user }: { user: User }) {
             ),
             record: <span className="font-mono">{e.recordId}</span>,
             reason: e.reason === null ? "—" : <span className="font-mono">{e.reason}</span>,
-            previous: e.previousNurseName ?? e.previousNurseId ?? "—",
+            previous: e.previousNurseName ?? e.previousNurseId?.value ?? "—",
           },
         }))}
         emptyMessage={emptyMessage}

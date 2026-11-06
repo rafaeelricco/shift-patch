@@ -5,6 +5,7 @@ import type { Json } from "@lib/json/types"
 import { api } from "@api/endpoints"
 
 import {
+  notification,
   test,
   expect,
   signInAs,
@@ -31,7 +32,7 @@ async function timesheet(request: APIRequestContext, token: string) {
   return (await decoded(res, api.timesheet.response)).rows
 }
 const shiftIds = async (request: APIRequestContext, id: AccountId) =>
-  (await timesheet(request, await apiToken(request, id))).map((r) => r.shiftId).sort()
+  (await timesheet(request, await apiToken(request, id))).map((r) => r.shiftId.value).sort()
 
 async function claimApi(request: APIRequestContext, token: string, id: string) {
   const res = await request.post(`/api/shifts/${id}/claim`, { ...authed(token), data: {} })
@@ -84,7 +85,7 @@ test("FR-9.1 a claim adds a row and a cancel removes it on the next read", async
     .filter({ hasText: "2026-10-02" })
     .getByRole("button", { name: "Claim shift" })
     .click()
-  await expect(page.getByTestId("notification-banner")).toHaveText("Shift claimed")
+  await expect(notification(page).locator("[data-title]")).toHaveText("Shift claimed")
 
   const row = tableRow(page, "2026-10-02")
   await expect(row).toHaveCount(1, POLL)
@@ -97,7 +98,7 @@ test("FR-9.1 a claim adds a row and a cancel removes it on the next read", async
     .filter({ hasText: "2026-10-02" })
     .getByTestId("shift-cancel-button")
     .click({ delay: 2100 })
-  await expect(page.getByTestId("notification-banner")).toHaveText("Shift cancelled, now open")
+  await expect(notification(page).locator("[data-title]")).toHaveText("Shift cancelled, now open")
   await expect(row).toHaveCount(0, POLL)
 })
 
@@ -125,7 +126,7 @@ test("FR-9.2 overnight and half-hour shifts count correctly", async ({ page, req
   })
 
   const rows = await timesheet(request, token)
-  const hours = (id: string) => rows.find((r) => r.shiftId === id)?.hours
+  const hours = (id: string) => rows.find((r) => r.shiftId.value === id)?.hours
   expect(hours("shift-1")).toBe(12)
   expect(hours("shift-9001")).toBe(11.5)
   expect(hours("shift-9002")).toBe(1)

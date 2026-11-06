@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { Id } from "@lib/id"
 import { type Future } from "@lib/future"
 
 const MARIA = { id: "nurse-1", name: "Maria Lopez", role: "nurse" }
@@ -69,7 +70,9 @@ describe("call", () => {
     const mock = stubFetch(json(200, shift))
     const app = await load()
 
-    expect(await settle(app.call(app.api.cancelShift, { id: "shift-2" }, { reason: "advance" }))).toBe("Resolved")
+    expect(await settle(app.call(app.api.cancelShift, { id: new Id<"Shift">("shift-2") }, { reason: "advance" }))).toBe(
+      "Resolved"
+    )
 
     const [path, init] = mock.mock.calls[0] ?? []
     expect(path).toBe("/api/shifts/shift-2/cancel")

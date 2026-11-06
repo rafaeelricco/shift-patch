@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest"
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
 
-import { DateOnly } from "@lib/time"
+import { DateOnly, TimeOfDay } from "@lib/time"
+import { Money } from "@lib/money"
 import {
   CheckboxInput,
   ComboboxInput,
@@ -14,10 +15,14 @@ import {
   TextInput,
   TimeInput,
   useForm,
+  type FormOutputs,
 } from "@ui/forms"
 import { FileField } from "@ui/field"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 // jsdom lacks these: cmdk measures and scrolls its list, and Base UI waits on animations before closing a popup.
 class ResizeObserverStub {
@@ -193,6 +198,21 @@ describe("validate", () => {
 })
 
 describe("DateInput", () => {
+  it("uses the UTC date for the empty calendar and year range", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2027-01-01T00:30:00Z"))
+    function Form() {
+      const { fields } = useForm({
+        fields: { day: new DateInput({ label: "Day", defaultValue: null, testId: "day-id" }) },
+      })
+      return <FormInput config={fields.day} />
+    }
+    render(<Form />)
+    fireEvent.click(screen.getByTestId("day-id"))
+    expect(await screen.findByRole("button", { name: "Today, Friday, January 1st, 2027" })).toBeTruthy()
+    expect(screen.getByRole("option", { name: "2037" })).toBeTruthy()
+  })
+
   it("shows the chosen date on its trigger", () => {
     function Form() {
       const { fields } = useForm({
@@ -254,5 +274,170 @@ describe("FileField", () => {
     expect(input.type).toBe("file")
     expect(input.classList).toContain("file:bg-secondary-soft")
     expect(screen.getByText("PDF or image.").id).toBe(input.getAttribute("aria-describedby"))
+  })
+})
+
+describe("form state", () => {
+  it("preserves every field value through validation and resets to its defaults", async () => {
+    const configs = {
+      text: new TextInput({ label: "Name", type: "text", defaultValue: "Maria" }),
+      textarea: new TextareaInput({ label: "Notes", defaultValue: "Initial notes" }),
+      date: new DateInput({ label: "Date", defaultValue: new DateOnly(2027, 3, 14) }),
+      time: new TimeInput({ label: "Start", defaultValue: new TimeOfDay(7 * 3600) }),
+      checkbox: new CheckboxInput({ label: "Urgent", defaultValue: false }),
+      money: new MoneyInput({ label: "Rate", defaultValue: Money.USD(25) }),
+      combobox: new ComboboxInput({
+        label: "Facility",
+        items: ROLES,
+        defaultValue: "nurse",
+        getValue: (role) => role.id,
+        getLabel: (role) => role.name,
+      }),
+      select: new SelectInput({
+        label: "Role",
+        items: ROLES,
+        defaultValue: "nurse",
+        getValue: (role) => role.id,
+        getLabel: (role) => role.name,
+      }),
+      tags: new TagsInput({ label: "Skills", defaultValue: ["ICU"] }),
+    }
+    type Outputs = {
+      text: string
+      textarea: string
+      date: DateOnly | null
+      time: TimeOfDay | null
+      checkbox: boolean
+      money: Money | null
+      combobox: string | null
+      select: string | null
+      tags: string[]
+    }
+    expectTypeOf<FormOutputs<typeof configs>>().toEqualTypeOf<Outputs>()
+
+    const { result } = renderHook(() =>
+      useForm({
+        fields: configs,
+        validate: (values) => {
+          expectTypeOf(values).toEqualTypeOf<Outputs>()
+          return {
+            text: "Invalid name",
+            textarea: "Invalid notes",
+            date: "Invalid date",
+            time: "Invalid time",
+            checkbox: "Invalid urgency",
+            money: "Invalid rate",
+            combobox: "Invalid facility",
+            select: "Invalid role",
+            tags: "Invalid skills",
+          }
+        },
+      })
+    )
+    expectTypeOf(result.current.values).toEqualTypeOf<Outputs>()
+    const defaults = result.current.values
+    act(() => {
+      result.current.fields.text.values.onChange("James")
+      result.current.fields.textarea.values.onChange("Changed notes")
+      result.current.fields.date.values.onChange(new DateOnly(2027, 3, 20))
+      result.current.fields.time.values.onChange(new TimeOfDay(19 * 3600))
+      result.current.fields.checkbox.values.onCheckedChange(true)
+      result.current.fields.money.values.onChange("12.")
+      result.current.fields.combobox.values.onChange("agency")
+      result.current.fields.select.values.onChange("agency")
+      result.current.fields.tags.values.onChange(["ER"])
+    })
+    const edited: Outputs = {
+      text: "James",
+      textarea: "Changed notes",
+      date: new DateOnly(2027, 3, 20),
+      time: new TimeOfDay(19 * 3600),
+      checkbox: true,
+      money: Money.USD(12),
+      combobox: "agency",
+      select: "agency",
+      tags: ["ER"],
+    }
+    expect(result.current.values).toEqual(edited)
+    const onSave = vi.fn()
+    await act(() => result.current.onSubmit(onSave)())
+    expect(onSave).not.toHaveBeenCalled()
+    expect(result.current.values).toEqual(edited)
+    expect(result.current.fields.money.values.value).toBe("12.")
+    for (const field of Object.values(result.current.fields)) {
+      expect(field.values.error.maybe("", (message) => message)).toMatch(/^Invalid /)
+    }
+
+    act(() => result.current.reset())
+    expect(result.current.values).toEqual(defaults)
+    expect(result.current.fields.money.values.value).toBe("25")
+    for (const field of Object.values(result.current.fields)) {
+      expect(field.values.error.maybe(null, (message) => message)).toBeNull()
+    }
+    // A reset starts a new editing cycle: changes stay unvalidated until the next submit.
+    act(() => result.current.fields.text.values.onChange("Next name"))
+    expect(result.current.fields.text.values.error.maybe(null, (message) => message)).toBeNull()
+    await act(() => result.current.onSubmit(onSave)())
+    expect(result.current.fields.text.values.error.maybe(null, (message) => message)).toBe("Invalid name")
+  })
+
+  it("keeps intermediate Money text in the rendered field when validation fails", async () => {
+    function Form() {
+      const { fields, onSubmit } = useForm({
+        fields: { rate: new MoneyInput({ label: "Rate", defaultValue: null }) },
+        validate: () => ({ rate: "Choose another rate." }),
+      })
+      return (
+        <form onSubmit={onSubmit(() => {})}>
+          <FormInput config={fields.rate} />
+          <button type="submit">Save</button>
+        </form>
+      )
+    }
+    render(<Form />)
+    const input = screen.getByLabelText<HTMLInputElement>("Rate")
+    fireEvent.change(input, { target: { value: "12." } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    expect((await screen.findByRole("alert")).textContent).toBe("Choose another rate.")
+    expect(input.value).toBe("12.")
+    fireEvent.change(input, { target: { value: "12.0" } })
+    expect(input.value).toBe("12.0")
+  })
+
+  it("isolates Tags defaults from the source array and other form instances", () => {
+    const defaults = ["ICU"]
+    const fields = { tags: new TagsInput({ label: "Skills", defaultValue: defaults }) }
+    const first = renderHook(() => useForm({ fields }))
+    const second = renderHook(() => useForm({ fields }))
+    expect(first.result.current.values.tags).not.toBe(defaults)
+    expect(first.result.current.values.tags).not.toBe(second.result.current.values.tags)
+
+    defaults.push("External change")
+    expect(first.result.current.values.tags).toEqual(["ICU"])
+    expect(second.result.current.values.tags).toEqual(["ICU"])
+    act(() => first.result.current.fields.tags.values.onChange(["ER"]))
+    expect(second.result.current.values.tags).toEqual(["ICU"])
+    expect(defaults).toEqual(["ICU", "External change"])
+    act(() => first.result.current.reset())
+    expect(first.result.current.values.tags).toEqual(["ICU"])
+  })
+
+  it("clears derived-field edits on reset", () => {
+    const { result } = renderHook(() =>
+      useForm({
+        fields: {
+          name: new TextInput({ label: "Name", type: "text", defaultValue: "Sunrise" }),
+          slug: new TextInput({ label: "Slug", type: "text", defaultValue: "" }),
+        },
+        derive: (values) => ({ slug: values.name.toLowerCase() }),
+      })
+    )
+    act(() => result.current.fields.slug.values.onChange("custom"))
+    act(() => result.current.fields.name.values.onChange("Metro"))
+    expect(result.current.values.slug).toBe("custom")
+    act(() => result.current.reset())
+    expect(result.current.values).toEqual({ name: "Sunrise", slug: "sunrise" })
+    act(() => result.current.fields.name.values.onChange("Metro"))
+    expect(result.current.values.slug).toBe("metro")
   })
 })

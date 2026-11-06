@@ -6,7 +6,7 @@ ShiftPatch has one route, `/`, and FR-1.8 gives each role one landing screen wit
 
 Table a screen renders: `./tables.md`. Write that mutates its data: `./forms.md`. Session: `./session.md`. Visual constraints: `./design-system.md`.
 
-`app/page.tsx` contains the sign-in and nurse screens, plus the agency and admin shells. The examples below illustrate the pattern rather than reproducing those screens.
+`app/page.tsx` contains the sign-in, nurse, agency and admin screens. The examples below illustrate the pattern rather than reproducing those screens.
 
 ## Audit
 
@@ -37,15 +37,14 @@ Page Audit:
 - **`@api/endpoints`**, **`@api/request`**: typed `api.*` and `call`, `FetchError`, `fetchErrorToString` (see `./forms.md`).
 - **`@lib/json/schema`**: `s.Infer<typeof api.<name>.response>` derives a response type.
 - **`@ui/state-message`**: `StateMessage`, the loading, empty and error surface.
-- **`@ui/notification-banner`**: `NotificationBanner`, inline errors. Sonner shows success confirmations.
-- **`@ui/page-shell`**: `PageShell` (title and icon). **`@ui/status-badge`**: `StatusBadge`. Shift rows are `ShiftLedger` and `ShiftRow` in `app/page.tsx`, their one importer.
+- **`@ui/sonner`**: the shared root-layout `Toaster`; notification behavior is specified in `./design-system.md` → Action outcomes.
+- **`@ui/status-badge`**: `StatusBadge`. Shift rows are `ShiftLedger` and `ShiftRow` in `app/page.tsx`, their one importer.
 - **`@ui/datatable`**: `DataTable` (see `./tables.md`).
 
 ## Imports
 
 ```ts
 import { useEffect, useState } from "react"
-import { Calendar03Icon } from "@hugeicons/core-free-icons"
 import * as s from "@lib/json/schema"
 import { type RemoteData, NotAsked, Loading, Failed, Ready } from "@lib/remote-data"
 import { Future } from "@lib/future"
@@ -53,7 +52,6 @@ import { api } from "@api/endpoints"
 import { call, fetchErrorToString, type FetchError } from "@api/request"
 import { useSession } from "@hooks/use-session"
 import { Button } from "@ui/button"
-import { PageShell } from "@ui/page-shell"
 import { StateMessage } from "@ui/state-message"
 ```
 
@@ -72,14 +70,14 @@ function HomePage() {
     case "SignedOut":
       return <LoginForm />
     case "SignedIn":
-      return <RoleScreen user={session.user} />
+      return <RoleScreen key={session.user.id.value} user={session.user} />
     default:
       return session satisfies never
   }
 }
 ```
 
-Each role's screen sits inside the section shell (the `@container/section-shell` frame and its parts, written as utilities in `app/page.tsx`), whose sidebar rows jump between sections of that one screen. Sign-out is on every screen (FR-1.8).
+Each role's screen sits inside the section shell (the `@container/section-shell` frame and its parts, written as utilities in `app/page.tsx`), whose desktop sidebar holds the brand and account menu. Compact behavior is specified in `design-system.md`. Sign-out is on every screen (FR-1.8).
 
 ## 2. The screen state cell (`RemoteData` + `Future.fork`)
 
@@ -99,7 +97,7 @@ useEffect(
 
 Don't call `setState(Loading())` in the effect body: `pnpm lint` rejects it (`react-hooks/set-state-in-effect`). A retry sets `Loading()` in its click handler and bumps `attempt`. A **status-only cell** (`RemoteData<E, never>`, no content on `Ready`, such as a save in flight) seeds `NotAsked()`.
 
-**Polled data.** The admin dashboard shows a change within 5 seconds with no reload (FR-5.4), and WebSockets are out of scope. Poll with `window.setInterval` and `Duration.seconds(n).asMilliseconds()`, cancel the previous `Future` before each tick, and only write the cell on a reply, so the table stays on screen between polls. Lists and polled data never animate.
+**Polled data.** The admin dashboard shows a change within 5 seconds with no reload (FR-5.4), and WebSockets are out of scope. The page-local `usePoll` reads immediately, then schedules a `window.setTimeout` three seconds after each read settles. Convert the `Duration` only at that timer boundary. Cleanup cancels the active `Future` and clears the timer; `refresh()` does both before starting another read. A failed poll retains the last successful data and marks it stale; before any success it renders the read error. Key the effect on stable input values such as `user.id.value`, and key the role screen by account as shown above. Lists and polled data never animate.
 
 ## 3. Exhaustive rendering (`instanceof … satisfies never`)
 
@@ -125,12 +123,12 @@ Branch every `RemoteData` case with `instanceof`, ending in `(state satisfies ne
 
 `Ready([])` isn't `NotAsked`. `Content` shows the empty state for it, such as "No open shifts right now".
 
-## 4. `StateMessage` or `NotificationBanner`
+## 4. Persistent state or action feedback
 
 - **`StateMessage`** says what a region holds: `loading`, `empty`, or a read that failed, with a way to retry.
-- **Action feedback** uses `data-testid="notification-banner"` (FR-11.4). Claim, cancel, post and upload report errors inline and show successes in a Sonner toast that closes after four seconds. Show server messages exactly as they came.
+- **Action feedback** uses `data-testid="notification-banner"` (FR-11.4). Login, session expiry, claim, cancel, post and upload use the shared Sonner host; see `./design-system.md` → Action outcomes. Field errors remain beside their controls. Show server messages exactly as they came.
 
-A blocked claim is a normal failure with a clear message. `shift-claim-button` stays visible and enabled for a nurse with a lapsed credential, and the banner explains (FR-4.2). Don't hide or disable it on the client.
+A blocked claim is a normal failure with a clear message. `shift-claim-button` stays visible and enabled for a nurse with a lapsed credential, and the toast explains (FR-4.2). Don't hide or disable it on the client.
 
 ## 5. Container / presentational split
 
@@ -163,7 +161,7 @@ Only the screen's `useEffect` forks. The layer stays lazy until then.
 
 ## Examples
 
-`api.listShifts`, `api.credential` and `api.timesheet` are `QueryEndpoint`s, read with `call(api.x, {})` (`./forms.md`). `api.getCredential` and `api.getNurse` below are illustrative: add the real entries with the first screen that needs them, and derive their types with `s.Infer`. A nurse's screen also holds `timesheet-table` and the credential form, left out here for length.
+`api.listShifts`, `api.credential` and `api.timesheet` are `QueryEndpoint`s, read with `call(api.x, {})` (`./forms.md`). A nurse's screen also holds `timesheet-table` and the credential form, left out here for length.
 
 ### The screen component: `RemoteData` cell + exhaustive match
 
@@ -171,7 +169,7 @@ The screen owns one `RemoteData` cell, fills it with `fetchNurseScreen().fork` i
 
 ```tsx
 type Shift = s.Infer<typeof api.listShifts.response>["shifts"][number]
-type Credential = s.Infer<typeof api.getCredential.response>
+type Credential = s.Infer<typeof api.credential.response>
 
 type NurseScreenData = {
   shifts: Shift[]
@@ -197,7 +195,10 @@ function NurseScreen() {
   }
 
   return (
-    <PageShell title="Shifts" Icon={Calendar03Icon}>
+    <section aria-labelledby="shifts-title" className="flex flex-col gap-6">
+      <h2 id="shifts-title" className="type-heading-md">
+        Shifts
+      </h2>
       {state instanceof Ready ?
         <Content data={state.value} />
       : state instanceof Loading || state instanceof NotAsked ?
@@ -212,7 +213,7 @@ function NurseScreen() {
           }}
         />
       : (state satisfies never)}
-    </PageShell>
+    </section>
   )
 }
 ```
@@ -240,7 +241,7 @@ function Content({ data }: { data: NurseScreenData }) {
       rows={open}
       renderRow={(shift) => (
         <ShiftRow
-          key={shift.id}
+          key={shift.id.value}
           shift={shift}
           data-testid="shift-list-item"
           who={<span className="truncate text-secondary">{shift.agencyName}</span>}
@@ -264,23 +265,17 @@ function fetchShifts(): Future<FetchError, Shift[]> {
 function fetchNurseScreen(): Future<FetchError, NurseScreenData> {
   return Future.concurrently<FetchError, NurseScreenData>({
     shifts: fetchShifts(),
-    credential: call(api.getCredential, {}),
+    credential: call(api.credential, {}),
   })
 }
 ```
 
-`.chain` and `Future.mapConcurrently` take a list to per-row reads, such as the covering nurse's name for each filled shift (FR-5.1). Prefer a route whose reply already joins that data. The fan-out is for when none exists.
+The admin coverage read already includes the covering nurse's name (FR-5.1). Use the joined response instead of per-row lookups:
 
 ```tsx
-type Coverage = { shift: Shift; nurse: s.Infer<typeof api.getNurse.response> | null }
+type AdminShift = s.Infer<typeof api.adminShifts.response>["shifts"][number]
 
-function fetchCoverageRow(shift: Shift): Future<FetchError, Coverage> {
-  return shift.claimedBy === null ?
-      Future.resolve({ shift, nurse: null })
-    : call(api.getNurse, { id: shift.claimedBy }).map((nurse) => ({ shift, nurse }))
-}
-
-function fetchCoverage(): Future<FetchError, Coverage[]> {
-  return fetchShifts().chain((shifts) => Future.mapConcurrently(fetchCoverageRow, shifts))
+function fetchCoverage(): Future<FetchError, AdminShift[]> {
+  return call(api.adminShifts, {}).map((result) => result.shifts)
 }
 ```

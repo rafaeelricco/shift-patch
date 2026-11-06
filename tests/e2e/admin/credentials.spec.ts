@@ -25,7 +25,7 @@ async function upload(request: APIRequestContext, token: string, name = "sample.
   const latest = (await decoded(res, api.uploadCredential.response)).latest
   expect(latest).not.toBeNull()
   if (latest === null) throw new Error("Upload did not return its record")
-  return latest.id
+  return latest.id.value
 }
 
 const review = (request: APIRequestContext, token: string, id: string, decision: string) =>
@@ -102,7 +102,7 @@ test("FR-7.6 pending list is oldest first and excludes reviewed uploads", async 
   const response = await request.get("/api/admin/credentials", authed(admin))
   expect(response.status()).toBe(200)
   const rows = (await decoded(response, api.pendingCredentials.response)).uploads
-  expect(rows.map((row) => row.id)).toEqual([first, second])
+  expect(rows.map((row) => row.id.value)).toEqual([first, second])
   expect(rows.map((row) => [row.nurseName, row.fileName, row.expiresOn.pretty()])).toEqual([
     ["James Cook", "james.pdf", relativeDate(365)],
     ["Maria Lopez", "maria.pdf", relativeDate(365)],
@@ -113,7 +113,9 @@ test("FR-7.6 pending list is oldest first and excludes reviewed uploads", async 
   expect(Object.keys(oldest).sort()).toEqual(["id", "nurseName", "fileName", "expiresOn", "uploadedAt"].sort())
   expect((await review(request, admin, first, "rejected")).status()).toBe(200)
   const remaining = await request.get("/api/admin/credentials", authed(admin))
-  expect((await decoded(remaining, api.pendingCredentials.response)).uploads.map((row) => row.id)).toEqual([second])
+  expect((await decoded(remaining, api.pendingCredentials.response)).uploads.map((row) => row.id.value)).toEqual([
+    second,
+  ])
 })
 
 for (const account of ["nurse-1", "nurse-2", "agency-a", "agency-b"] as const) {
@@ -289,7 +291,7 @@ test("FR-4.4 a claim before approval stays blocked without changing the shift", 
   })
   const response = await request.get("/api/shifts", authed(james))
   expect(
-    (await decoded(response, api.listShifts.response)).shifts.find((shift) => shift.id === "shift-1")
+    (await decoded(response, api.listShifts.response)).shifts.find((shift) => shift.id.value === "shift-1")
   ).toMatchObject({
     status: "open",
     claimedBy: null,

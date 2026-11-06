@@ -1,6 +1,7 @@
 export { audit, type AuditAction }
 
 import { sql, type Db, type DbError } from "@lib/db"
+import type { Id } from "@lib/id"
 import type { Future } from "@lib/future"
 
 type AuditAction =
@@ -19,17 +20,17 @@ type AuditAction =
 function audit(
   tx: Db,
   entry: {
-    actorId: string | null
+    actorId: Id<"User"> | null
     action: AuditAction
     recordId: string
     reason: string | null
-    previousNurseId: string | null
+    previousNurseId: Id<"User"> | null
   }
 ): Future<DbError, void> {
   return tx
     .execute(
       sql`INSERT INTO audit_log (actor_id, action, record_id, reason, previous_nurse_id)
-        VALUES (${entry.actorId}, ${entry.action}, ${entry.recordId}, ${entry.reason}, ${entry.previousNurseId})`
+        VALUES (${entry.actorId?.value ?? null}, ${entry.action}, ${entry.recordId}, ${entry.reason}, ${entry.previousNurseId?.value ?? null})`
     )
     .map(() => undefined)
 }

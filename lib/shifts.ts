@@ -1,6 +1,7 @@
 export { SHIFT_SELECT, schema_shift_row, listShifts, shiftById, toApiShift, type ShiftRow }
 
 import * as s from "@lib/json/schema"
+import { Id } from "@lib/id"
 import { sql, type Db, type DbError, type Sql } from "@lib/db"
 import type { Future } from "@lib/future"
 import type { Shift } from "@api/endpoints"
@@ -10,14 +11,14 @@ const SHIFT_SELECT: Sql = sql`SELECT s.id, s.agency_id, a.name AS agency_name, s
   FROM shifts s JOIN accounts a ON a.id = s.agency_id`
 
 const schema_shift_row = s.object({
-  id: s.string,
-  agency_id: s.string,
+  id: Id.schema<"Shift">(),
+  agency_id: Id.schema<"User">(),
   agency_name: s.string,
   role: s.stringEnum(["RN", "LPN"]),
   date: s.string, // DATE stays a string (lib/db.ts type parser 1082)
   start_time: s.string,
   end_time: s.string,
-  claimed_by: s.nullable(s.string),
+  claimed_by: s.nullable(Id.schema<"User">()),
 })
 type ShiftRow = s.Infer<typeof schema_shift_row>
 
@@ -25,8 +26,8 @@ function listShifts(db: Db, where: Sql): Future<DbError, ReadonlyArray<ShiftRow>
   return db.rows(sql`${SHIFT_SELECT} WHERE ${where} ORDER BY s.date, s.start_time, s.id`, schema_shift_row)
 }
 
-function shiftById(db: Db, id: string): Future<DbError, ShiftRow | null> {
-  return db.maybeOne(sql`${SHIFT_SELECT} WHERE s.id = ${id}`, schema_shift_row)
+function shiftById(db: Db, id: Id<"Shift">): Future<DbError, ShiftRow | null> {
+  return db.maybeOne(sql`${SHIFT_SELECT} WHERE s.id = ${id.value}`, schema_shift_row)
 }
 
 /** Status is derived, never stored: claimed_by NULL is open (FR-6.9). */

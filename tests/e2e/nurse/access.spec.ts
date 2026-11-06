@@ -1,10 +1,11 @@
 import { createHmac } from "node:crypto"
 
+import { Id } from "@lib/id"
 import * as s from "@lib/json/schema"
 import { api } from "@api/endpoints"
 import { db, sql } from "@lib/db"
 
-import { test, expect, signInAs, apiToken, authed, decoded, setExpiry, relativeDate } from "../fixtures"
+import { notification, test, expect, signInAs, apiToken, authed, decoded, setExpiry, relativeDate } from "../fixtures"
 
 const ERROR = s.object({ error: s.string })
 const EXPIRED = { error: "Session expired, sign in again" }
@@ -120,7 +121,7 @@ test("FR-1.5 agency and admin tokens get 403 { error } on nurse-only routes", as
   }
   const list = await request.get("/api/shifts", authed(await apiToken(request, "nurse-1")))
   const { shifts } = await decoded(list, api.listShifts.response)
-  const shift1 = shifts.find((x) => x.id === "shift-1")
+  const shift1 = shifts.find((x) => x.id.value === "shift-1")
   expect(shift1?.status).toBe("open")
   expect(shift1?.claimedBy).toBeNull()
 })
@@ -132,7 +133,7 @@ test("FR-1.6 a claim body naming another nurse cannot change who claims", async 
     data: { claimedBy: "nurse-2", nurseId: "nurse-2", role: "admin" },
   })
   expect(claim.status()).toBe(200)
-  expect((await decoded(claim, api.claimShift.response)).claimedBy).toBe("nurse-1")
+  expect((await decoded(claim, api.claimShift.response)).claimedBy?.value).toBe("nurse-1")
 
   const cancel = await request.post("/api/shifts/shift-2/cancel", {
     ...authed(token),
@@ -141,7 +142,7 @@ test("FR-1.6 a claim body naming another nurse cannot change who claims", async 
   expect(cancel.status()).toBe(200)
   expect((await decoded(cancel, api.cancelShift.response)).cancellation).toEqual({
     reason: "advance",
-    previousNurseId: "nurse-1",
+    previousNurseId: new Id<"User">("nurse-1"),
   })
 })
 
@@ -154,14 +155,14 @@ test("FR-1.4 a session the server no longer holds returns to sign-in with one se
   await db.execute(sql`DELETE FROM auth_sessions`).promise((e) => new Error(e.message))
   await page.reload()
   await expect(page.getByTestId("login-email-input")).toBeVisible()
-  const banner = page.getByTestId("notification-banner")
+  const banner = notification(page)
   await expect(banner).toHaveCount(1) // /me and any parallel 401s land on one sign-out
-  await expect(banner).toHaveText("Session expired, sign in again")
+  await expect(banner.locator("[data-title]")).toHaveText("Session expired, sign in again")
   expect(await page.evaluate(() => window.localStorage.getItem("session"))).toBeNull()
 
   await signInAs(page, "nurse-1")
   await expect(page.getByRole("heading", { level: 1, name: "Shifts" })).toBeVisible()
-  await expect(page.getByTestId("notification-banner")).toHaveCount(0)
+  await expect(notification(page)).toHaveCount(0)
 })
 
 test("FR-1.9 Maria's landing screen shows all six nurse test IDs without navigation", async ({ page }) => {

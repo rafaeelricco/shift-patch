@@ -4,8 +4,8 @@
  * Typed forms: describe each field with a config class, get the form's state from `useForm`, and render each field
  * with `FormInput`.
  *
- * ShiftPatch's forms are built this way (sign-in, the new shift form, cancelling a shift, adding a credential and the
- * timesheet), so labels, errors, validation timing, ids and test ids behave the same everywhere. The fields render
+ * Sign-in and credential forms use these fields for consistent labels, errors, validation timing, ids and test ids.
+ * The fields render
  * with the design system's field parts: a hint sits under the control and an error replaces it.
  *
  * ```tsx
@@ -115,29 +115,9 @@ type ItemProps<T> =
   : T extends TagsInput ? TagsElementConfig
   : never
 
-type ItemState<T extends ItemConfig> =
-  T extends TextInput ? TextItemState
-  : T extends TextareaInput ? TextareaItemState
-  : T extends DateInput ? DateItemState
-  : T extends TimeInput ? TimeItemState
-  : T extends CheckboxInput ? CheckboxItemState
-  : T extends MoneyInput ? MoneyItemState
-  : T extends SelectInputBase ? SelectItemState
-  : T extends ComboboxInputBase ? ComboboxItemState
-  : T extends TagsInput ? TagsItemState
-  : never
+type ItemState<T extends ItemConfig> = ReturnType<T["initialState"]>
 
-type ItemOutput<T> =
-  T extends TextInput ? string
-  : T extends TextareaInput ? string
-  : T extends DateInput ? DateOnly | null
-  : T extends TimeInput ? TimeOfDay | null
-  : T extends CheckboxInput ? boolean
-  : T extends MoneyInput ? Money | null
-  : T extends SelectInputBase ? string | null
-  : T extends ComboboxInputBase ? string | null
-  : T extends TagsInput ? string[]
-  : never
+type ItemOutput<T extends ItemConfig> = ReturnType<ItemState<T>["getValue"]>
 
 type AnyElementConfig = ItemProps<ItemConfig>
 type FormInputs = Record<string, ItemConfig>
@@ -196,6 +176,9 @@ class TextInput {
   }) {
     this.values = values
   }
+  initialState(): TextItemState {
+    return new TextItemState({ value: this.values.defaultValue, error: Nothing() })
+  }
 }
 
 class TextItemState {
@@ -205,6 +188,9 @@ class TextItemState {
   }
   getValue(): string {
     return this.values.value
+  }
+  withError(error: Maybe<string>): TextItemState {
+    return new TextItemState({ value: this.values.value, error })
   }
 }
 
@@ -260,6 +246,9 @@ class TextareaInput {
   }) {
     this.values = values
   }
+  initialState(): TextareaItemState {
+    return new TextareaItemState({ value: this.values.defaultValue, error: Nothing() })
+  }
 }
 
 class TextareaItemState {
@@ -269,6 +258,9 @@ class TextareaItemState {
   }
   getValue(): string {
     return this.values.value
+  }
+  withError(error: Maybe<string>): TextareaItemState {
+    return new TextareaItemState({ value: this.values.value, error })
   }
 }
 
@@ -320,6 +312,9 @@ class DateInput {
   }) {
     this.values = values
   }
+  initialState(): DateItemState {
+    return new DateItemState({ value: this.values.defaultValue, error: Nothing() })
+  }
 }
 
 class DateItemState {
@@ -329,6 +324,9 @@ class DateItemState {
   }
   getValue(): DateOnly | null {
     return this.values.value
+  }
+  withError(error: Maybe<string>): DateItemState {
+    return new DateItemState({ value: this.values.value, error })
   }
 }
 
@@ -378,6 +376,9 @@ class TimeInput {
   }) {
     this.values = values
   }
+  initialState(): TimeItemState {
+    return new TimeItemState({ value: this.values.defaultValue, error: Nothing() })
+  }
 }
 
 class TimeItemState {
@@ -387,6 +388,9 @@ class TimeItemState {
   }
   getValue(): TimeOfDay | null {
     return this.values.value
+  }
+  withError(error: Maybe<string>): TimeItemState {
+    return new TimeItemState({ value: this.values.value, error })
   }
 }
 
@@ -429,6 +433,9 @@ class CheckboxInput {
   constructor(values: { label: ReactNode; description?: ReactNode; defaultValue: boolean; testId?: string }) {
     this.values = values
   }
+  initialState(): CheckboxItemState {
+    return new CheckboxItemState({ value: this.values.defaultValue, error: Nothing() })
+  }
 }
 
 class CheckboxItemState {
@@ -438,6 +445,9 @@ class CheckboxItemState {
   }
   getValue(): boolean {
     return this.values.value
+  }
+  withError(error: Maybe<string>): CheckboxItemState {
+    return new CheckboxItemState({ value: this.values.value, error })
   }
 }
 
@@ -484,6 +494,9 @@ class MoneyInput {
   }) {
     this.values = values
   }
+  initialState(): MoneyItemState {
+    return new MoneyItemState({ value: moneyToInputValue(this.values.defaultValue), error: Nothing() })
+  }
 }
 
 /** Holds the raw dollar text so in-progress entry (e.g. "12." or "") survives keystrokes; the `Money` value is derived on read. */
@@ -499,6 +512,9 @@ class MoneyItemState {
     const dollars = Number(cleaned)
     if (!Number.isFinite(dollars)) return null
     return Money.USD(dollars)
+  }
+  withError(error: Maybe<string>): MoneyItemState {
+    return new MoneyItemState({ value: this.values.value, error })
   }
 }
 
@@ -555,6 +571,9 @@ class ComboboxInputBase {
   constructor(values: ComboboxValues<unknown>) {
     this.values = values
   }
+  initialState(): ComboboxItemState {
+    return new ComboboxItemState({ value: this.values.defaultValue, error: Nothing() })
+  }
 }
 
 class ComboboxInput<T> extends ComboboxInputBase {
@@ -571,6 +590,9 @@ class ComboboxItemState {
   }
   getValue(): string | null {
     return this.values.value
+  }
+  withError(error: Maybe<string>): ComboboxItemState {
+    return new ComboboxItemState({ value: this.values.value, error })
   }
 }
 
@@ -632,6 +654,9 @@ class SelectInputBase {
   constructor(values: SelectValues<unknown>) {
     this.values = values
   }
+  initialState(): SelectItemState {
+    return new SelectItemState({ value: this.values.defaultValue, error: Nothing() })
+  }
 }
 
 class SelectInput<T> extends SelectInputBase {
@@ -648,6 +673,9 @@ class SelectItemState {
   }
   getValue(): string | null {
     return this.values.value
+  }
+  withError(error: Maybe<string>): SelectItemState {
+    return new SelectItemState({ value: this.values.value, error })
   }
 }
 
@@ -692,6 +720,9 @@ class TagsInput {
   }) {
     this.values = values
   }
+  initialState(): TagsItemState {
+    return new TagsItemState({ value: [...this.values.defaultValue], error: Nothing() })
+  }
 }
 
 class TagsItemState {
@@ -701,6 +732,9 @@ class TagsItemState {
   }
   getValue(): string[] {
     return this.values.value
+  }
+  withError(error: Maybe<string>): TagsItemState {
+    return new TagsItemState({ value: this.values.value, error })
   }
 }
 
@@ -732,37 +766,6 @@ class TagsElementConfig {
 }
 
 type SetState<T extends ItemConfig> = (v: ItemState<T>) => void
-
-function getInitialState(config: ItemConfig): ItemState<ItemConfig> {
-  if (config instanceof TextInput) {
-    return new TextItemState({ value: config.values.defaultValue, error: Nothing() })
-  }
-  if (config instanceof TextareaInput) {
-    return new TextareaItemState({ value: config.values.defaultValue, error: Nothing() })
-  }
-  if (config instanceof DateInput) {
-    return new DateItemState({ value: config.values.defaultValue, error: Nothing() })
-  }
-  if (config instanceof TimeInput) {
-    return new TimeItemState({ value: config.values.defaultValue, error: Nothing() })
-  }
-  if (config instanceof CheckboxInput) {
-    return new CheckboxItemState({ value: config.values.defaultValue, error: Nothing() })
-  }
-  if (config instanceof MoneyInput) {
-    return new MoneyItemState({ value: moneyToInputValue(config.values.defaultValue), error: Nothing() })
-  }
-  if (config instanceof ComboboxInputBase) {
-    return new ComboboxItemState({ value: config.values.defaultValue, error: Nothing() })
-  }
-  if (config instanceof SelectInputBase) {
-    return new SelectItemState({ value: config.values.defaultValue, error: Nothing() })
-  }
-  if (config instanceof TagsInput) {
-    return new TagsItemState({ value: [...config.values.defaultValue], error: Nothing() })
-  }
-  return config satisfies never
-}
 
 /** Build the props a field's element receives from its config, current state and state setter. */
 function buildProps(
@@ -941,24 +944,10 @@ function buildProps(
   return config satisfies never
 }
 
-/** Copy `s` with `error` replaced and its value kept. */
-function withError(error: Maybe<string>, s: ItemState<ItemConfig>): ItemState<ItemConfig> {
-  if (s instanceof TextItemState) return new TextItemState({ value: s.values.value, error })
-  if (s instanceof TextareaItemState) return new TextareaItemState({ value: s.values.value, error })
-  if (s instanceof DateItemState) return new DateItemState({ value: s.values.value, error })
-  if (s instanceof TimeItemState) return new TimeItemState({ value: s.values.value, error })
-  if (s instanceof CheckboxItemState) return new CheckboxItemState({ value: s.values.value, error })
-  if (s instanceof MoneyItemState) return new MoneyItemState({ value: s.values.value, error })
-  if (s instanceof ComboboxItemState) return new ComboboxItemState({ value: s.values.value, error })
-  if (s instanceof SelectItemState) return new SelectItemState({ value: s.values.value, error })
-  if (s instanceof TagsItemState) return new TagsItemState({ value: s.values.value, error })
-  return s satisfies never
-}
-
 function initialState<T extends FormInputs>(fields: T): FormState<T> {
   const result: Record<string, unknown> = {}
   for (const key of Object.keys(fields)) {
-    result[key] = getInitialState(fields[key]!)
+    result[key] = fields[key]!.initialState()
   }
   return result as FormState<T>
 }
@@ -974,7 +963,7 @@ function getValues<T extends FormInputs>(state: FormState<T>): FormOutputs<T> {
 function updateErrors<T extends FormInputs>(errs: FormErrors<T>, state: FormState<T>): FormState<T> {
   const result: Record<string, unknown> = {}
   for (const key of Object.keys(state)) {
-    result[key] = withError(fromNullable(errs[key] ?? null), state[key]! as ItemState<ItemConfig>)
+    result[key] = state[key]!.withError(fromNullable(errs[key] ?? null))
   }
   return result as FormState<T>
 }
@@ -1300,8 +1289,11 @@ function FormDateField({
   const { id, value, label, description, placeholder, testId, error, onChange } = config.values
   const [open, setOpen] = useState(false)
   const selectedJs = value ? new Date(value.year, value.month - 1, value.day) : undefined
+  const today = DateOnly.todayUTC()
+  // Native Date adapter required by the calendar widget.
+  const todayJs = new Date(today.year, today.month - 1, today.day)
   // The dropdown caption otherwise stops at this December, and shifts and credential expiries run into later years.
-  const lastYear = Math.max(new Date().getFullYear(), value?.year ?? 0) + 10
+  const lastYear = Math.max(today.year, value?.year ?? 0) + 10
 
   return (
     <FormLabel htmlFor={id} label={label} description={description} error={error}>
@@ -1321,7 +1313,8 @@ function FormDateField({
           <Calendar
             mode="single"
             selected={selectedJs}
-            defaultMonth={selectedJs ?? new Date()}
+            today={todayJs}
+            defaultMonth={selectedJs ?? todayJs}
             captionLayout="dropdown"
             endMonth={new Date(lastYear, 11)}
             onSelect={(d) => {

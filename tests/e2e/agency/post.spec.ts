@@ -1,5 +1,6 @@
 import type { APIRequestContext } from "@playwright/test"
 
+import { Id } from "@lib/id"
 import * as s from "@lib/json/schema"
 import { api } from "@api/endpoints"
 import { resetToSeed } from "@lib/seed"
@@ -36,11 +37,11 @@ test("FR-2.1 an agency posts { role, date, startTime, endTime } and gets 201 wit
   expect(res.status()).toBe(201)
   expect((await keys(res)).sort()).toEqual([...SHIFT_KEYS].sort())
   const shift = await decoded(res, api.postShift.response)
-  expect(shift.id).toMatch(/^shift-\d+$/)
+  expect(shift.id.value).toMatch(/^shift-\d+$/)
   expect(shift).toEqual({
     ...EXAMPLE,
     id: shift.id,
-    agencyId: "agency-a",
+    agencyId: new Id<"User">("agency-a"),
     agencyName: "Sunrise Health Staffing",
     status: "open",
     claimedBy: null,
@@ -52,7 +53,7 @@ test("FR-2.1 an agency posts { role, date, startTime, endTime } and gets 201 wit
 
 test("FR-2.2 an agencyId in the body has no effect", async ({ request }) => {
   const shift = await posted(request, "agency-b", { ...EXAMPLE, agencyId: "agency-a", agencyName: "Sunrise" })
-  expect(shift.agencyId).toBe("agency-b")
+  expect(shift.agencyId.value).toBe("agency-b")
   expect(shift.agencyName).toBe("Metro Care Partners")
 })
 
@@ -133,21 +134,21 @@ test("FR-2.6 an endTime earlier than startTime is accepted as overnight, and sch
   })
   expect(shift).toMatchObject({ role: "LPN", startTime: "19:00", endTime: "07:00", status: "open" })
   await setExpiry("nurse-1", relativeDate(365))
-  const claim = await request.post(`/api/shifts/${shift.id}/claim`, authed(await apiToken(request, "nurse-1")))
+  const claim = await request.post(`/api/shifts/${shift.id.value}/claim`, authed(await apiToken(request, "nurse-1")))
   expect(claim.status()).toBe(200)
   const res = await request.get("/api/timesheet", authed(await apiToken(request, "agency-a")))
-  const row = (await decoded(res, api.timesheet.response)).rows.find((r) => r.shiftId === shift.id)
+  const row = (await decoded(res, api.timesheet.response)).rows.find((r) => r.shiftId.value === shift.id.value)
   expect(row?.hours).toBe(12)
 })
 
 test("FR-2.7 each post gets a new shift-<n> ID that is never reused, even after a seed reset", async ({ request }) => {
   const first = await posted(request, "agency-a", EXAMPLE)
   const second = await posted(request, "agency-b", EXAMPLE)
-  expect(shiftNumber(first.id)).toBeGreaterThan(3)
-  expect(shiftNumber(second.id)).toBeGreaterThan(shiftNumber(first.id))
+  expect(shiftNumber(first.id.value)).toBeGreaterThan(3)
+  expect(shiftNumber(second.id.value)).toBeGreaterThan(shiftNumber(first.id.value))
   await resetToSeed().promise((e) => new Error(e.message))
   const third = await posted(request, "agency-a", EXAMPLE)
-  expect(shiftNumber(third.id)).toBeGreaterThan(shiftNumber(second.id))
+  expect(shiftNumber(third.id.value)).toBeGreaterThan(shiftNumber(second.id.value))
 })
 
 test("FR-2.7 concurrent posts get distinct IDs", async ({ request }) => {
@@ -158,7 +159,7 @@ test("FR-2.7 concurrent posts get distinct IDs", async ({ request }) => {
   const ids = await Promise.all(
     replies.map(async (res) => {
       expect(res.status()).toBe(201)
-      return (await decoded(res, api.postShift.response)).id
+      return (await decoded(res, api.postShift.response)).id.value
     })
   )
   expect(new Set(ids).size).toBe(5)
@@ -166,7 +167,7 @@ test("FR-2.7 concurrent posts get distinct IDs", async ({ request }) => {
 
 test("FR-8.2 posting writes one shift.posted entry by the agency", async ({ request, auditLog }) => {
   const shift = await posted(request, "agency-a", EXAMPLE)
-  expect(await auditLog.entries(shift.id)).toEqual([
-    { action: "shift.posted", actor_id: "agency-a", record_id: shift.id, reason: null, previous_nurse_id: null },
+  expect(await auditLog.entries(shift.id.value)).toEqual([
+    { action: "shift.posted", actor_id: "agency-a", record_id: shift.id.value, reason: null, previous_nurse_id: null },
   ])
 })

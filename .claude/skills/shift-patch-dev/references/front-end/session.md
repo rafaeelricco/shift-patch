@@ -58,7 +58,7 @@ Match on `session.type` exhaustively, ending in `satisfies never`. A failed logi
 
 ## 2. The session API
 
-- **`signIn(email, password)`** returns a lazy `Future<FetchError, User>`. Nothing is sent until it is forked. Success caches the user and commits `SignedIn` (the reply's `token` is for API clients and is ignored), so the gate swaps the screen with no success handler. Failure rejects and changes nothing. A 401 carries `Invalid email or password` (FR-1.2), which `fetchErrorToString` turns into the banner's text (FR-1.7).
+- **`signIn(email, password)`** returns a lazy `Future<FetchError, User>`. Nothing is sent until it is forked. Success caches the user and commits `SignedIn` (the reply's `token` is for API clients and is ignored), so the gate swaps the screen with no success handler. Failure rejects and changes nothing. A 401 carries `Invalid email or password` (FR-1.2), which `fetchErrorToString` turns into the toast's text (FR-1.7).
 - **`signOut()`** is optimistic: it removes the cache and commits `SignedOut` at once, then `POST /api/auth/logout` deletes the server session. If that request fails, `/me` says whether the session survived, and a surviving one comes back.
 - **`useSession()`** wraps `useSyncExternalStore(subscribeToSession, getSessionSnapshot, getServerSessionSnapshot)`. Its file carries `"use client"`.
 
@@ -74,7 +74,7 @@ Match on `session.type` exhaustively, ending in `satisfies never`. A failed logi
 - `call` and `upload` send same-origin requests, so the browser attaches the `sid` cookie. No caller adds a header or a `credentials` option.
 - Every 401 fires the `onUnauthorized` listeners. A signed-in tab asks `/me` (once per burst); `Anonymous` signs it out with `expired: true`, and a `User` answer (a late 401 from an older session) keeps it.
 - A 401 while signed out is a failed login. The session ignores it.
-- A 403 is a role or credential answer (FR-1.5, FR-4.1), not a lost session. It stays an ordinary `BadStatus` for the banner.
+- A 403 is a role or credential answer (FR-1.5, FR-4.1), not a lost session. It stays an ordinary `BadStatus` for the toast.
 
 ## 5. Server contract
 
@@ -83,7 +83,7 @@ Match on `session.type` exhaustively, ending in `satisfies never`. A failed logi
 - `GET /api/auth/me` is public and returns `{ actor }`: the user, or `{ type: "Anonymous" }` for a missing, expired or ended session. Never 401.
 - `POST /api/auth/logout` deletes the request's session and returns 200 `{}`. It is public and idempotent, and sends no clearing cookie (a slow reply could otherwise clear a newer sign-in's cookie).
 - An `Authorization` header, when present, is judged alone and never falls back to the cookie. A missing, malformed or expired credential on an authenticated route returns 401 with `{ error }`. A role that isn't allowed returns 403 with `{ error }` (FR-1.4, FR-1.5).
-- After 20 failed logins for one email and client address within 15 minutes, further attempts return 429 with `{ error }` (NFR-2). The form shows it in the banner like any failure.
+- After 20 failed logins for one email and client address within 15 minutes, further attempts return 429 with `{ error }` (NFR-2). The form shows it through action feedback like any failure.
 - Every error body is `{ "error": "<message>" }`, which becomes `BadStatus.message`.
 - Sample accounts are in the "Sample data" section of `docs/ShiftPatch-Technical-Spec.md`.
 
@@ -92,7 +92,7 @@ Match on `session.type` exhaustively, ending in `satisfies never`. A failed logi
 - Do: read the session with `useSession`, and pass what a child needs as props.
 - Do: route every change through `setSession` or `commitSession`. `signIn` and `signOut` are the public doors.
 - Do: treat `Checking` as its own state. Render a loading surface, not the login form.
-- Do: show login failures in `NotificationBanner` with `notification-banner` (FR-1.7).
+- Do: show login failures through the page's `useActionFeedback` helper (see `./pages.md` §4) (FR-1.7).
 - Do not: read `localStorage` during render, or in the initial state of `useState`. That is a hydration mismatch.
 - Do not: merge `Checking` into `SignedOut`, or a returning visitor sees the login form flash.
 - Do not: add a React Context or a second store for identity.

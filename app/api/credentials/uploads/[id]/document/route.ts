@@ -1,4 +1,5 @@
 import * as s from "@lib/json/schema"
+import { Id } from "@lib/id"
 import { db, sql } from "@lib/db"
 import { authorize } from "@lib/auth"
 import { Future } from "@lib/future"
@@ -14,13 +15,14 @@ export async function GET(
   request: Request,
   ctx: RouteContext<"/api/credentials/uploads/[id]/document">
 ): Promise<Response> {
-  const { id } = await ctx.params
+  const { id: rawId } = await ctx.params
+  const id = new Id<"CredentialUpload">(rawId)
   return respond(
     authorize(request, ["nurse", "admin"]).chain((user) =>
       db
         .maybeOne(
           sql`SELECT content_type, file_name, encode(document, 'base64') AS document FROM credential_uploads
-            WHERE id = ${id} ${user.role === "nurse" ? sql`AND nurse_id = ${user.id.value}` : sql``}`,
+            WHERE id = ${id.value} ${user.role === "nurse" ? sql`AND nurse_id = ${user.id.value}` : sql``}`,
           schema_document
         )
         .mapRej(fromDb)

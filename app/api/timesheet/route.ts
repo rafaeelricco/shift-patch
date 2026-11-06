@@ -1,31 +1,22 @@
 import * as s from "@lib/json/schema"
+import { Id } from "@lib/id"
 import { api } from "@api/endpoints"
 import { db, sql, type Sql } from "@lib/db"
 import { authorize } from "@lib/auth"
 import { json, respond, fromDb } from "@lib/http"
-import { Duration } from "@lib/time"
+import { scheduledDuration } from "@lib/scheduled-duration"
 import type { UserActor } from "@lib/actor"
 
 const schema_row = s.object({
-  shift_id: s.string,
-  nurse_id: s.string,
+  shift_id: Id.schema<"Shift">(),
+  nurse_id: Id.schema<"User">(),
   nurse_name: s.string,
-  agency_id: s.string,
+  agency_id: Id.schema<"User">(),
   agency_name: s.string,
   date: s.string,
   start_time: s.string,
   end_time: s.string,
 })
-
-// tables.md §7: minutes, no time zones. An end before the start is the next day (FR-9.2).
-const minutesOf = (time: string): number => {
-  const [hours = 0, minutes = 0] = time.split(":").map(Number)
-  return hours * 60 + minutes
-}
-function scheduledHours(startTime: string, endTime: string): number {
-  const span = minutesOf(endTime) - minutesOf(startTime)
-  return Duration.minutes(span < 0 ? span + 24 * 60 : span).asHours()
-}
 
 /** FR-9.3: admin every row, agency its own shifts, nurse their own. */
 function scope(user: UserActor): Sql {
@@ -66,7 +57,7 @@ export async function GET(request: Request): Promise<Response> {
                 date: r.date,
                 startTime: r.start_time,
                 endTime: r.end_time,
-                hours: scheduledHours(r.start_time, r.end_time),
+                hours: scheduledDuration(r.start_time, r.end_time).asHours(),
               })),
             })
           )

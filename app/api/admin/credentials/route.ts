@@ -1,6 +1,7 @@
 export { GET }
 
 import * as s from "@lib/json/schema"
+import { Id } from "@lib/id"
 import { api } from "@api/endpoints"
 import { db, sql } from "@lib/db"
 import { authorize } from "@lib/auth"
@@ -8,7 +9,7 @@ import { DateOnly, POSIX } from "@lib/time"
 import { json, respond, fromDb } from "@lib/http"
 
 const schema_row = s.object({
-  id: s.string,
+  id: Id.schema<"CredentialUpload">(),
   nurse_name: s.string,
   file_name: s.string,
   expires_on: DateOnly.schema,

@@ -9,6 +9,9 @@ const ME = "/api/auth/me"
 const UPLOAD = "/api/credentials"
 const READS = ["/api/shifts", "/api/credentials/me", "/api/timesheet"]
 
+const notifications = () =>
+  screen.queryAllByTestId("notification-banner").filter((node) => node.dataset["removed"] === "false")
+
 const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200 })
 const me = (user: typeof NURSE_A): Response => json({ actor: { type: "User", ...user } })
 
@@ -45,8 +48,14 @@ function firstAccountReply(path: RequestInfo | URL): Response {
 async function visit() {
   vi.resetModules()
   const { default: Page } = await import("@/app/page")
+  const { Toaster } = await import("@ui/sonner")
   await act(async () => {
-    render(<Page />)
+    render(
+      <>
+        <Page />
+        <Toaster />
+      </>
+    )
   })
   expect(screen.getByText(PRIVATE_ROW)).toBeTruthy()
   expect(screen.getByText("Oct 15, 2030")).toBeTruthy()
@@ -244,7 +253,7 @@ describe("successful shift actions", () => {
     expect(reads).toBe(3)
     expect(screen.queryByTestId(`shift-${action}-button`)).toBeNull()
     expect(screen.getByTestId(`shift-${inverse}-button`)).toBeTruthy()
-    expect(screen.getByTestId("notification-banner").textContent).toBe(message)
+    expect(notifications()[0]?.textContent).toBe(message)
     const focused = document.querySelector(focus)
     expect(focused).toBeTruthy()
     expect(document.activeElement).toBe(focused)
@@ -255,7 +264,7 @@ describe("successful shift actions", () => {
     })
     expect(screen.queryByTestId(`shift-${action}-button`)).toBeNull()
     expect(screen.getByTestId(`shift-${inverse}-button`)).toBeTruthy()
-    expect(screen.getByTestId("notification-banner").textContent).toBe(message)
+    expect(notifications()[0]?.textContent).toBe(message)
     expect(fetchMock.mock.calls.filter(([path]) => path === actionPath)).toHaveLength(1)
   })
 })

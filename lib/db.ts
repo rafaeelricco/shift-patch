@@ -8,7 +8,7 @@ import type { Result } from "@lib/result"
 import { hashPassword } from "@lib/password"
 
 // Keep DATE (1082) and TIMESTAMPTZ (1184) as the strings Postgres sends. A shift's
-// facility-local date must never pass through Date (time.md, "Facility-local time").
+// facility-local date must never pass through Date (time.md, "Dates, shift times and instants").
 pg.types.setTypeParser(1082, (v: string) => v)
 pg.types.setTypeParser(1184, (v: string) => v)
 
@@ -112,6 +112,11 @@ function pool(): pg.Pool {
   return g.shiftPatchPool
 }
 
+/**
+ * Commits when the callback resolves, regardless of its value.
+ * Rejecting rolls back. A resolved HTTP failure may intentionally commit
+ * an audit entry, as with a credential-blocked claim.
+ */
 function withTransaction<T>(f: (tx: Db) => Future<DbError, T>): Future<DbError, T> {
   return Future.bracket(
     Future.attemptP(async () => pool().connect()).mapRej(toDbError),
@@ -132,76 +137,88 @@ function withTransaction<T>(f: (tx: Db) => Future<DbError, T>): Future<DbError, 
   )
 }
 
-// Additive only: later phases append statements, never edit shipped ones.
-const MIGRATIONS: ReadonlyArray<Sql> = [
-  sql`CREATE TABLE IF NOT EXISTS accounts (
-    id text PRIMARY KEY,
-    role text NOT NULL CHECK (role IN ('nurse', 'agency', 'admin')),
-    name text NOT NULL,
-    email text NOT NULL UNIQUE CHECK (email = lower(email)),
-    password_hash text NOT NULL
-  )`,
-  // The approved expiry date FR-4.4 reads. Uploads awaiting review live elsewhere (Nurse phase).
-  sql`CREATE TABLE IF NOT EXISTS credentials (
-    nurse_id text PRIMARY KEY REFERENCES accounts (id),
-    expires_on date NOT NULL
-  )`,
-  sql`CREATE SEQUENCE IF NOT EXISTS shift_number START 4`, // FR-2.7: shift-1..3 are seeded, numbers never reused
-  // Status is derived (claimed_by null = open), so "cancelled" can never be stored (FR-6.9).
-  sql`CREATE TABLE IF NOT EXISTS shifts (
-    id text PRIMARY KEY,
-    agency_id text NOT NULL REFERENCES accounts (id),
-    role text NOT NULL CHECK (role IN ('RN', 'LPN')),
-    date date NOT NULL,
-    start_time text NOT NULL CHECK (start_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
-    end_time text NOT NULL CHECK (end_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
-    claimed_by text REFERENCES accounts (id),
-    CHECK (start_time <> end_time)
-  )`,
-  // Append-only (FR-8.4): no route issues UPDATE or DELETE on it, and the reset keeps it (FR-10.3).
-  sql`CREATE TABLE IF NOT EXISTS audit_log (
-    id bigserial PRIMARY KEY,
-    at timestamptz NOT NULL DEFAULT now(),
-    actor_id text,
-    action text NOT NULL,
-    record_id text NOT NULL,
-    reason text,
-    previous_nurse_id text
-  )`,
-  sql`CREATE TABLE IF NOT EXISTS login_failures (
-    email text NOT NULL,
-    address text NOT NULL,
-    at timestamptz NOT NULL DEFAULT now()
-  )`,
-  sql`CREATE INDEX IF NOT EXISTS login_failures_pair ON login_failures (email, address, at)`,
-  sql`CREATE TABLE IF NOT EXISTS seed_state (
-    id int PRIMARY KEY CHECK (id = 1),
-    seeded_at timestamptz NOT NULL DEFAULT now()
-  )`,
-  // FR-7: the document is a bytea column, never a file, because the host disk is ephemeral (NFR-3).
-  // Removing the row removes the file.
-  sql`CREATE TABLE IF NOT EXISTS credential_uploads (
-    id text PRIMARY KEY,
-    nurse_id text NOT NULL REFERENCES accounts (id),
-    expires_on date NOT NULL,
-    status text NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
-    content_type text NOT NULL CHECK (content_type IN ('application/pdf', 'image/png', 'image/jpeg')),
-    file_name text NOT NULL,
-    byte_size int NOT NULL CHECK (byte_size > 0 AND byte_size <= 4194304),
-    document bytea NOT NULL,
-    uploaded_at timestamptz NOT NULL DEFAULT now(),
-    reviewed_at timestamptz
-  )`,
-  // FR-7.5: at most one pending upload per nurse. The upload route replaces it under a lock; this is the backstop.
-  sql`CREATE UNIQUE INDEX IF NOT EXISTS credential_uploads_one_pending ON credential_uploads (nurse_id) WHERE status = 'pending'`,
-  sql`CREATE INDEX IF NOT EXISTS credential_uploads_latest ON credential_uploads (nurse_id, uploaded_at DESC)`,
-  // Browser sessions store only a token digest; login, /me and logout share this table.
-  sql`CREATE TABLE IF NOT EXISTS auth_sessions (
-    token_hash text PRIMARY KEY,
-    account_id text NOT NULL REFERENCES accounts (id),
-    expires_at timestamptz NOT NULL
-  )`,
-  sql`CREATE INDEX IF NOT EXISTS auth_sessions_expiry ON auth_sessions (expires_at)`,
+// Additive only: append new versions; never edit applied statements.
+const MIGRATIONS: ReadonlyArray<{
+  version: number
+  statements: ReadonlyArray<Sql>
+}> = [
+  {
+    version: 1,
+    statements: [
+      sql`CREATE TABLE IF NOT EXISTS accounts (
+        id text PRIMARY KEY,
+        role text NOT NULL CHECK (role IN ('nurse', 'agency', 'admin')),
+        name text NOT NULL,
+        email text NOT NULL UNIQUE CHECK (email = lower(email)),
+        password_hash text NOT NULL
+      )`,
+      // The approved expiry date FR-4.4 reads. Uploads awaiting review live elsewhere (Nurse phase).
+      sql`CREATE TABLE IF NOT EXISTS credentials (
+        nurse_id text PRIMARY KEY REFERENCES accounts (id),
+        expires_on date NOT NULL
+      )`,
+      sql`CREATE SEQUENCE IF NOT EXISTS shift_number START 4`, // FR-2.7: shift-1..3 are seeded, numbers never reused
+      // Status is derived (claimed_by null = open), so "cancelled" can never be stored (FR-6.9).
+      sql`CREATE TABLE IF NOT EXISTS shifts (
+        id text PRIMARY KEY,
+        agency_id text NOT NULL REFERENCES accounts (id),
+        role text NOT NULL CHECK (role IN ('RN', 'LPN')),
+        date date NOT NULL,
+        start_time text NOT NULL CHECK (start_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+        end_time text NOT NULL CHECK (end_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+        claimed_by text REFERENCES accounts (id),
+        CHECK (start_time <> end_time)
+      )`,
+      // Append-only (FR-8.4): no route issues UPDATE or DELETE on it, and the reset keeps it (FR-10.3).
+      sql`CREATE TABLE IF NOT EXISTS audit_log (
+        id bigserial PRIMARY KEY,
+        at timestamptz NOT NULL DEFAULT now(),
+        actor_id text,
+        action text NOT NULL,
+        record_id text NOT NULL,
+        reason text,
+        previous_nurse_id text
+      )`,
+      sql`CREATE TABLE IF NOT EXISTS login_failures (
+        email text NOT NULL,
+        address text NOT NULL,
+        at timestamptz NOT NULL DEFAULT now()
+      )`,
+      sql`CREATE INDEX IF NOT EXISTS login_failures_pair ON login_failures (email, address, at)`,
+      sql`CREATE TABLE IF NOT EXISTS seed_state (
+        id int PRIMARY KEY CHECK (id = 1),
+        seeded_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      // FR-7: the document is a bytea column, never a file, because the host disk is ephemeral (NFR-3).
+      // Removing the row removes the file.
+      sql`CREATE TABLE IF NOT EXISTS credential_uploads (
+        id text PRIMARY KEY,
+        nurse_id text NOT NULL REFERENCES accounts (id),
+        expires_on date NOT NULL,
+        status text NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+        content_type text NOT NULL CHECK (content_type IN ('application/pdf', 'image/png', 'image/jpeg')),
+        file_name text NOT NULL,
+        byte_size int NOT NULL CHECK (byte_size > 0 AND byte_size <= 4194304),
+        document bytea NOT NULL,
+        uploaded_at timestamptz NOT NULL DEFAULT now(),
+        reviewed_at timestamptz
+      )`,
+      // FR-7.5: at most one pending upload per nurse. The upload route replaces it under a lock; this is the backstop.
+      sql`CREATE UNIQUE INDEX IF NOT EXISTS credential_uploads_one_pending ON credential_uploads (nurse_id) WHERE status = 'pending'`,
+      sql`CREATE INDEX IF NOT EXISTS credential_uploads_latest ON credential_uploads (nurse_id, uploaded_at DESC)`,
+      // Browser sessions store only a token digest; login, /me and logout share this table.
+      sql`CREATE TABLE IF NOT EXISTS auth_sessions (
+        token_hash text PRIMARY KEY,
+        account_id text NOT NULL REFERENCES accounts (id),
+        expires_at timestamptz NOT NULL
+      )`,
+      sql`CREATE INDEX IF NOT EXISTS auth_sessions_expiry ON auth_sessions (expires_at)`,
+    ],
+  },
+  {
+    version: 2,
+    statements: [sql`CREATE INDEX IF NOT EXISTS login_failures_at ON login_failures (at)`],
+  },
 ]
 
 // The technical spec's sample data, exactly (FR-11.1). The password is the published sample one (NFR-2).
@@ -285,7 +302,22 @@ function setup(): Future<DbError, void> {
   return withTransaction((tx) =>
     tx
       .execute(sql`SELECT pg_advisory_xact_lock(${SETUP_LOCK})`)
-      .chain(() => Future.traverse((q: Sql) => tx.execute(q), [...MIGRATIONS]))
+      .chain(() =>
+        tx.execute(sql`CREATE TABLE IF NOT EXISTS schema_migrations (
+          version int PRIMARY KEY CHECK (version > 0),
+          applied_at timestamptz NOT NULL DEFAULT now()
+        )`)
+      )
+      .chain(() => tx.rows(sql`SELECT version FROM schema_migrations`, s.object({ version: s.number })))
+      .chain((applied) =>
+        Future.traverse(
+          (migration) =>
+            Future.traverse((statement: Sql) => tx.execute(statement), [...migration.statements]).chain(() =>
+              tx.execute(sql`INSERT INTO schema_migrations (version) VALUES (${migration.version})`)
+            ),
+          MIGRATIONS.filter(({ version }) => !applied.some((entry) => entry.version === version))
+        )
+      )
       .chain(() =>
         tx.rows(
           sql`INSERT INTO seed_state (id) VALUES (1) ON CONFLICT DO NOTHING RETURNING id`,

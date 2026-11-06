@@ -61,7 +61,12 @@ export async function POST(request: Request): Promise<Response> {
   return respond(
     readBody(request, api.login.request, MALFORMED).chain(({ email, password }) => {
       const key = email.trim().toLowerCase()
-      return isThrottled(db, key, address)
+      return db
+        .execute(
+          sql`DELETE FROM login_failures
+            WHERE at <= now() - make_interval(mins => ${WINDOW_MINUTES})`
+        )
+        .chain(() => isThrottled(db, key, address))
         .chain((blocked) => {
           if (blocked) return Future.resolve<DbError, Response>(failure(429, THROTTLED))
 

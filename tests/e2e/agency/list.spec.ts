@@ -1,5 +1,6 @@
 import type { APIRequestContext } from "@playwright/test"
 
+import { Id } from "@lib/id"
 import * as s from "@lib/json/schema"
 import { api } from "@api/endpoints"
 
@@ -21,7 +22,7 @@ test("FR-2.8 agency-a reads its own shifts as { agencyId, shifts } in the full s
   expect(res.status()).toBe(200)
   expect(await keys(res)).toEqual(["agencyId", "shifts"])
   expect(await decoded(res, api.agencyShifts.response)).toEqual({
-    agencyId: "agency-a",
+    agencyId: new Id<"User">("agency-a"),
     shifts: [seededShift("shift-1"), seededShift("shift-2")],
   })
 })
@@ -30,7 +31,7 @@ test("FR-2.8 agency-b reads only shift-3", async ({ request }) => {
   const res = await read(request, "agency-b", "agency-b")
   expect(res.status()).toBe(200)
   expect(await decoded(res, api.agencyShifts.response)).toEqual({
-    agencyId: "agency-b",
+    agencyId: new Id<"User">("agency-b"),
     shifts: [seededShift("shift-3")],
   })
 })
@@ -43,8 +44,8 @@ test("FR-2.8 a posted shift appears only in its own agency's list", async ({ req
   const shift = await decoded(res, api.postShift.response)
   const own = await decoded(await read(request, "agency-b", "agency-b"), api.agencyShifts.response)
   const other = await decoded(await read(request, "agency-a", "agency-a"), api.agencyShifts.response)
-  expect(own.shifts.map((x) => x.id)).toEqual(["shift-3", shift.id])
-  expect(other.shifts.map((x) => x.id)).toEqual(["shift-1", "shift-2"])
+  expect(own.shifts.map((x) => x.id.value)).toEqual(["shift-3", shift.id.value])
+  expect(other.shifts.map((x) => x.id.value)).toEqual(["shift-1", "shift-2"])
 })
 
 const DENIED: ReadonlyArray<[AccountId, string]> = [
@@ -71,8 +72,8 @@ test("FR-2.9 an admin may read any agency", async ({ request }) => {
     const res = await read(request, "admin-1", agencyId)
     expect(res.status()).toBe(200)
     const body = await decoded(res, api.agencyShifts.response)
-    expect(body.agencyId).toBe(agencyId)
-    expect(body.shifts.map((x) => x.id)).toEqual(ids)
+    expect(body.agencyId.value).toBe(agencyId)
+    expect(body.shifts.map((x) => x.id.value)).toEqual(ids)
   }
 })
 
