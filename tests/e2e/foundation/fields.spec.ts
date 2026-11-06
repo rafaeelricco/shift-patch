@@ -21,7 +21,10 @@ test.describe("touch fields", () => {
     const email = page.getByTestId("login-email-input")
     const password = page.getByTestId("login-password-input")
 
-    for (const [field, value] of [[email, "nurse@example.com"], [password, "example-password"]] as const) {
+    for (const [field, value] of [
+      [email, "nurse@example.com"],
+      [password, "example-password"],
+    ] as const) {
       await expect(field).toHaveCSS("font-size", "16px")
       expect(await field.evaluate((element) => getComputedStyle(element, "::placeholder").fontSize)).toBe("16px")
       await field.tap()
