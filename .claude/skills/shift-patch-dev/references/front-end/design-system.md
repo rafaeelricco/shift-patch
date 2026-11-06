@@ -154,7 +154,7 @@ Each style is the class `type-<style>`, an `@utility` in `app/globals.css`.
 | `type-text-xs`       | 12/18       | 400    | `0.025em`  | Captions                                     |
 | `type-small-caps-md` | 11/15       | 600    | `0.65px`   | The only uppercase, through `text-transform` |
 
-Field controls are 14/20 (`fieldControl`). Field labels are 14/20 at 500, messages 12/18. `--font-heading-2xl` and up, `--font-text-2xs`, `--font-text-3xs` and `--font-small-caps-lg` exist as tokens with no class.
+Field controls use 14/20 (`fieldControl`). On coarse pointers, inputs and textareas use 16/24 to avoid focus zoom on iPhone. Field labels are 14/20 at 500, messages 12/18. `--font-heading-2xl` and up, `--font-text-2xs`, `--font-text-3xs` and `--font-small-caps-lg` exist as tokens with no class.
 
 **Figures** use `tabular-nums` wherever digits line up. Numbers align right in tables and identifiers stay left. Counts use `toLocaleString()`. Dates and times stay in the sans face with `tabular-nums`. Machine-readable values (ids, paths, URLs, hashes) render in `font-mono`, and prose never does.
 
@@ -509,4 +509,4 @@ Layout literals in the ported classes are the accepted exceptions: 448px for the
 
 ### Field rendering details
 
-Empty and entered field text use `text-sm` (14px/20px); `placeholder:text-sm` keeps placeholder metrics consistent. Fine-pointer hover uses a background gradient with the `alpha-02` token, behind the inset border; an invalid hovered field clears that image and uses the danger surface. Focus and disabled states retain their own precedence.
+Placeholders inherit the field's text size, so empty and filled values use the same metrics. Fine-pointer hover uses a background gradient with the `alpha-02` token, behind the inset border; an invalid hovered field clears that image and uses the danger surface. Focus and disabled states retain their own precedence.

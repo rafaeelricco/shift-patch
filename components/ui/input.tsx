@@ -10,8 +10,10 @@ import { cn } from "@lib/utils"
 /** The bordered control surface; shared by Textarea, SelectTrigger, FileField and the forms triggers. */
 const fieldControl = cn(
   "h-control-lg w-full min-w-0 appearance-none rounded-lg bg-control px-gutter-md text-sm text-primary [--outer-radius:var(--radius-lg)]",
+  // iPhone Safari can zoom on focus when an editable control uses text below 16px.
+  "pointer-coarse:[&:is(input,textarea)]:text-base",
   "inset-ring inset-ring-strong transition-[background-color,box-shadow] duration-(--transition-duration-basic) ease-basic",
-  "placeholder:text-sm placeholder:text-tertiary",
+  "placeholder:text-tertiary",
   "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
   "aria-invalid:focus-visible:inset-ring-border-danger-outline-hover aria-invalid:focus-visible:outline-ring-danger",
   "disabled:cursor-not-allowed disabled:bg-transparent disabled:text-disabled disabled:inset-ring-border-disabled",
