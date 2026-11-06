@@ -167,6 +167,7 @@ test("FR-6.4 cancel checks run 401, 404, 403, 400, 409 in that order", async ({ 
     { who: "agency-b", shift: "shift-2", body: bogus, status: 403, error: "You don't have access to this" },
     { who: "nurse-2", shift: "shift-2", body: bogus, status: 403, error: "Shift no longer assigned to you" },
     { who: "agency-a", shift: "shift-1", body: bogus, status: 400, error: INVALID_REASON.error },
+    { who: "nurse-1", shift: "shift-1", body: bogus, status: 400, error: INVALID_REASON.error },
     { who: "agency-a", shift: "shift-1", body: advance, status: 409, error: "Shift is already open" },
     { who: "nurse-1", shift: "shift-1", body: advance, status: 409, error: "Shift is already open" },
     { who: "nurse-2", shift: "shift-3", body: advance, status: 409, error: "Shift is already open" },

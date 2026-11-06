@@ -1,4 +1,4 @@
-export { db, sql, Sql, type Db, type DbError, SAMPLE }
+export { db, sql, Sql, closeDb, type Db, type DbError, SAMPLE }
 
 import pg, { type PoolClient } from "pg"
 
@@ -93,6 +93,14 @@ function on(client: pg.Pool | PoolClient): Db {
 const g = globalThis as typeof globalThis & {
   shiftPatchPool?: pg.Pool
   shiftPatchReady?: Promise<Result<DbError, void>> | undefined
+}
+
+/** Operator processes call this after their last query so no idle pool keeps the command alive. */
+async function closeDb(): Promise<void> {
+  const active = g.shiftPatchPool
+  delete g.shiftPatchPool
+  g.shiftPatchReady = undefined
+  await active?.end()
 }
 
 // Throws on a missing DATABASE_URL: a configuration error. Every caller sits in an async attemptP

@@ -24,49 +24,46 @@ Removed IDs: none.
 
 ### Status
 
-The Foundation, Nurse, Admin and Agency core groups are built. Operator is next; admin credential review (FR-7.6) is still open.
+All product groups are implemented, including admin credential review and the standalone operator command. The current UI and required API/test-ID contracts are preserved. Production acceptance, CI for the published revision and the final production reset remain separate delivery gates.
 
-Ticked items are covered by automated tests. Validate the current revision with `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, and `make e2e`.
+### Verification ledger
 
-Specs: `tests/e2e/foundation/{fields,login,session,seed}.spec.ts` and `tests/e2e/nurse/{access,browse,claim,cancel,credential,timesheet}.spec.ts` and `tests/e2e/admin/{dashboard,audit}.spec.ts` and `tests/e2e/agency/{post,list,screen}.spec.ts`. Unit tests: `tests/{password,token,request,time,facility,session}.test.ts` and `tests/page.test.tsx`.
+Evidence date: **2026-11-05 (America/Sao_Paulo)**. Evidence target: the implementation changes in this PR, based on `6cb289c79395596c843e0b55994ea9a652d9cff7`. These local checks ran before publication; CI must separately verify the published revision. Automated checks use Node 24.22.1 and disposable PostgreSQL 17. Local browser checks use the production build on port 3101 and a separate disposable database. No local result is presented as deployed verification.
 
-What exists:
+| Requirements / check | Evidence | Result |
+| --- | --- | --- |
+| Type safety, lint | `pnpm typecheck`, `pnpm lint` | Passed. Lint initially scanned generated files in an ignored local agent worktree; the root ESLint configuration now excludes that worktree. |
+| UI/unit regressions | `pnpm test` | 102 tests across 13 files passed, including review loading, empty, error/retry, stale polling, duplicate clicks and notification handling. |
+| FR-7.6; FR-4.4 locking; FR-7.7 privacy | `tests/e2e/admin/{credentials,credential-screen}.spec.ts`, `tests/e2e/nurse/{claim,credential}.spec.ts` | Passed in the production-build E2E run. Covers both nurses/agencies, approval/rejection, expired pending uploads, replacement ordering, claim/review ordering, duplicate decisions and audit-failure rollback. Concurrent decisions now explicitly queue both requests behind the nurse lock. |
+| FR-6.4 validation order | `tests/e2e/nurse/cancel.spec.ts` | Passed, including invalid reason on an open shift returning 400 before 409. |
+| FR-10 operator process | `tests/e2e/operator/reset.spec.ts` | All five process tests passed: exact restoration including a missing credential, removed uploads/documents and login failures, preserved history and sequence, transaction rollback, sanitized failures and process exit/cleanup. |
+| Full application regressions/build | `make e2e` | 213 tests passed against the production build. Earlier runs exposed two test-harness issues: conflicting inherited color settings in subprocess stderr, then text ordering of numeric audit IDs. Both were corrected within the two allowed fix/rerun rounds; no product failure remained. |
+| FR-8.2 / FR-8.3 audit writes | Mutation suites under `tests/e2e/{agency,nurse,admin,operator}` | Passed: one entry per successful mutation or blocked claim; transactional rollback verified at the database primitive, approval/rejection endpoints and actual reset command. |
+| FR-8.4 audit immutability | Audit route/UI inspection, source search for audit UPDATE/DELETE/TRUNCATE, operator history-preservation test | Only the admin GET route exposes audit records; no application mutation path or editing control exists. Reset preserves all prior entries. |
+| NFR-1 / NFR-2 | Contract, role, token, login-throttle, password, file-access suites; required-ID source comparison; ignored environment files | Passed automated coverage for required response shapes and all 15 IDs, permissions including both agencies/nurses, hash-only storage, token tampering and failed-login limits. Server secrets remain environment-only. Deployed element checks remain pending below. |
+| NFR-5 branding | Source/asset inspection and local Codex browser | ShiftPatch branding retained; no Designli name/assets in product source. |
+| NFR-8 local security checks | `pnpm audit --audit-level=high`; CI's Semgrep 1.183.0 OWASP command | Passed: one moderate dependency finding, no high/critical; zero ERROR-severity Semgrep findings across the normal scan and an explicit scan of all seven new files. Submission CI remains pending. |
+| Local Codex browser | James and Alex on `localhost:3101` / `127.0.0.1:3101` | Exact expired-claim message, synthetic PDF submission and protected viewing, keyboard approval, empty review queue, successful subsequent claim and scheduled hours verified. Approval propagated in 1,377 ms; claim in 2,333 ms, with no reload. These timings are local only. |
 
-- **Server**
-  - `lib/db.ts` is the typed Postgres layer: parameter-only `sql`, schema-decoded rows, additive migrations, and a one-time seed under an advisory lock.
-  - Shared modules: `lib/password.ts` (scrypt), `lib/token.ts` (HS256 JWT, 8 h), `lib/auth.ts` (per-route guard), `lib/http.ts`, `lib/audit.ts`, `lib/seed.ts` (reset), `lib/shifts.ts`, `lib/credentials.ts` and `lib/facility.ts`.
-  - Routes:
-    - `POST /api/auth/login`
-    - `GET /api/shifts`
-    - `POST /api/shifts`
-    - `GET /api/agencies/:agencyId/shifts`
-    - `POST /api/shifts/:id/claim`
-    - `POST /api/shifts/:id/cancel`
-    - `GET /api/credentials/me`
-    - `POST /api/credentials`
-    - `GET /api/credentials/uploads/:id/document`
-    - `GET /api/timesheet`
-- **Client**
-  - `/` holds the session gate, the canvas sign-in card and one section shell per role (account menu with Sign out, top-bar banner slot).
-  - The Nurse screen has open and own shifts, claim and cancel, the credential panel with upload, and scheduled hours.
-  - The Agency screen has the inline post-shift form, its own shifts with the covering nurse, cancel with a reason, and scheduled hours.
-  - Every section polls every 3 s.
-- **Tooling**: `playwright.config.ts`, `make db-up`, `make e2e ARGS=…`, and a CI `e2e` job with a Postgres service.
+The full automated inventory is `tests/e2e/{foundation,nurse,admin,agency,operator}` plus `tests/*.test.{ts,tsx}`. The operator README documents setup, environment keys, accounts, checks, reset invocation and exclusions. `ESCALATION.md` remains unchanged.
 
-Built but left unticked:
+Resolved issues: foreign nurses now receive the same 404 for existing and missing documents; upload, review and claim share the nurse credential lock; FR-6.4's wording now matches its established validation order.
 
-- **FR-8.2**: posting, claim, blocked claim, cancel, upload and seed reset each write one entry, and the tests check them. Approval and rejection come with FR-7.6.
-- **FR-8.3**: every route writes its entry on the same transaction as its change. Only a primitive-level test proves the rollback, plus the blocked-claim route test.
-- **FR-8.4**: a grep confirms no route or screen updates or deletes `audit_log`. No test asserts it yet.
-- **FR-10.1**: `resetToSeed()` exists and is tested. The documented operator command is Operator work.
-- **FR-11.2 to FR-11.5**: need the deployed app.
-- **NFR-1 to NFR-4 and NFR-7 to NFR-9**: hold for everything built so far. Each needs the remaining screens, a CI run on push, or the deployment before it can be ticked.
+### Remaining delivery verification
 
-Known issues to settle in a later group:
+The user authorized publishing the verified implementation as a ready-for-review PR. Production release, deployed browser acceptance and the final production reset remain pending. The checklist below is reserved for the release pass. Require passing CI for the exact published revision, deploy through the existing Vercel project, and record that revision below before completing deployment requirements.
 
-- `GET /api/credentials/uploads/:id/document` answers 404 before checking ownership, so another nurse can tell whether an upload ID exists (404 versus 403). The IDs are random.
-- The claim route reads the approved expiry without a row lock. Once admin approval (FR-7.6) exists, an approval committing mid-claim could be read stale. Lock the credentials row in FR-7.6.
-- FR-6.4: a nurse cancelling an open shift with an invalid reason gets 400, because the ordered list puts 400 before 409. That contradicts the sentence "A nurse cancelling any open shift therefore gets 409".
+All ordinary account flows must first run on `https://shift-patch.vercel.app/` in the Codex browser:
+
+- [ ] Sunrise: default/custom overnight posting, ownership, covering nurse, advance/no-show cancellation, hours and notifications.
+- [ ] Metro: independent posting and ownership; Sunrise data/admin controls unavailable; own hours.
+- [ ] Maria: both agencies, claim, own hours, hold-to-cancel, reopening and reclaim.
+- [ ] James: enabled expired claim and exact error; upload validation; pending block; rejection; resubmission; approval and successful claim.
+- [ ] Alex: complete coverage/counts, protected documents, both review decisions, audit actors/reasons/previous nurse, all hours.
+- [ ] All 15 required test IDs, success/error notification, sign-out/account switching, role boundaries, keyboard operation, narrow layouts and loading/empty/error/retry states.
+- [ ] Measured posting/claim/cancellation updates in an open admin session within five seconds, plus upload/review propagation. Verify alternate hostnames point to the same deployment/database before using them to isolate sessions.
+- [ ] Persistence across a production redeploy.
+- [ ] Acquire read-only confirmation authentication, run the operator reset as the last application-data write, confirm exactly the seeded three shifts with authenticated `GET /api/shifts`, record evidence, and make no further deployed writes.
 
 ## Functional requirements
 
@@ -96,9 +93,9 @@ Built first. Every actor group depends on it. The seeded shifts and credential d
 
 Each actor group writes its own entries as it is built, so no route needs a later retrofit. The admin group adds the screen that reads them.
 
-- [ ] FR-8.2 Posting, claiming, blocked claims, cancelling, credential upload, approval, rejection and operator seed reset each add one entry. (decision)
-- [ ] FR-8.3 An entry is saved together with the change it records, so neither can exist without the other. Blocked claims change nothing and add only the entry. (decision)
-- [ ] FR-8.4 No route or screen can edit or delete an entry. (decision)
+- [x] FR-8.2 Posting, claiming, blocked claims, cancelling, credential upload, approval, rejection and operator seed reset each add one entry. (decision)
+- [x] FR-8.3 An entry is saved together with the change it records, so neither can exist without the other. Blocked claims change nothing and add only the entry. (decision)
+- [x] FR-8.4 No route or screen can edit or delete an entry. (decision)
 
 ### Nurse
 
@@ -133,7 +130,7 @@ The cancel route is built here and shared with the agency and admin groups.
 - [x] FR-6.1 `POST /api/shifts/:id/cancel` with `{ reason }` on a filled shift returns 200 and the shift with `status: "open"` and `claimedBy: null`, plus `cancellation: { reason, previousNurseId }`.
 - [x] FR-6.2 A missing or invalid `reason` returns 400 with `{ error }`. Valid reasons are `no-show` and `advance`. (decision)
 - [x] FR-6.3 The assigned nurse, the owning agency and the admin may cancel. Everyone else gets 403. (decision)
-- [x] FR-6.4 Cancel checks run in this order: 401 for a bad token, 404 for an unknown ID, 403 for an agency that does not own the shift or a nurse when another nurse holds it, 400 for an invalid reason, and 409 if the shift is open. A nurse cancelling any open shift therefore gets 409. (decision)
+- [x] FR-6.4 Cancel checks run in this order: 401 for a bad token, 404 for an unknown ID, 403 for an agency that does not own the shift or a nurse when another nurse holds it, 400 for an invalid reason, and 409 if the shift is open. A nurse cancelling an open shift with a valid reason gets 409; an invalid reason gets 400 first. (decision)
 - [x] FR-6.5 A cancelled shift can be claimed again.
 - [x] FR-6.7 `shift-cancel-button` appears on a nurse's own claimed shifts and on an agency's filled shifts. Nurses hold the button for two seconds with a primary pointer, Space or Enter. Agencies cancel with one click. (decision)
 - [x] FR-6.8 A nurse's cancel uses `advance`. An agency chooses the reason beside the button, defaulting to `advance`. (decision)
@@ -180,7 +177,7 @@ Relies on: FR-3.1 (all shifts), FR-6.1 to FR-6.4 (cancel through the API only), 
 
 #### Credential review (FR-7) · supporting
 
-- [ ] FR-7.6 An admin can see pending uploads, open each document, and approve or reject it. Approval makes that expiry date the one used by FR-4.4. (decision)
+- [x] FR-7.6 An admin can see pending uploads, open each document, and approve or reject it. Approval makes that expiry date the one used by FR-4.4. (decision)
 
 #### Audit log screen (FR-8) · supporting
 
@@ -216,9 +213,9 @@ No screen or HTTP route. Run from the deployment environment.
 
 #### Operator seed reset (FR-10) · supporting
 
-- [ ] FR-10.1 A documented operator command restores shifts and credential expiry dates to the exact sample data and removes all uploaded credential records and files. (decision)
-- [ ] FR-10.2 Only the deployment operator can run the reset. No application screen or HTTP endpoint exposes it. (decision)
-- [ ] FR-10.3 The audit log is kept and records the reset. IDs of removed shifts are not reused. (decision)
+- [x] FR-10.1 A documented operator command restores shifts and credential expiry dates to the exact sample data and removes all uploaded credential records and files. (decision)
+- [x] FR-10.2 Only the deployment operator can run the reset. No application screen or HTTP endpoint exposes it. (decision)
+- [x] FR-10.3 The audit log is kept and records the reset. IDs of removed shifts are not reused. (decision)
 
 #### Submission (FR-11) · core
 
@@ -226,11 +223,11 @@ No screen or HTTP route. Run from the deployment environment.
 
 ## Non-functional requirements
 
-- [ ] NFR-1 Contract fidelity: required routes return exactly the specified keys, and every error body is `{ "error": "<message>" }`. All 15 test IDs in the technical spec are present as `data-testid` with their exact names, on the elements it describes. Supports FR-1 to FR-9.
-- [ ] NFR-2 Security: passwords are stored only as salted hashes and never returned. Signing keys and other secrets live outside git, and the only committed credentials are the published sample passwords. Every route enforces permissions itself. After 20 failed logins for the same email and client address within 15 minutes, further attempts for that pair return 429 with `{ error }` until the window ends. Other emails and addresses are unaffected, and accounts are never locked (decision). Supports FR-1 and FR-7.
+- [x] NFR-1 Contract fidelity: required routes return exactly the specified keys, and every error body is `{ "error": "<message>" }`. All 15 test IDs in the technical spec are present as `data-testid` with their exact names, on the elements it describes. Supports FR-1 to FR-9.
+- [x] NFR-2 Security: passwords are stored only as salted hashes and never returned. Signing keys and other secrets live outside git, and the only committed credentials are the published sample passwords. Every route enforces permissions itself. After 20 failed logins for the same email and client address within 15 minutes, further attempts for that pair return 429 with `{ error }` until the window ends. Other emails and addresses are unaffected, and accounts are never locked (decision). Supports FR-1 and FR-7.
 - [ ] NFR-3 Durability: data survives restarts and redeploys. Supports FR-11.
 - [ ] NFR-4 Quality gate: CI runs type checks, lint, tests and build on every push, and all pass. Tests cover FR-1 to FR-10, including cross-agency access, simultaneous claims, overnight hours, credential upload validation, approval and rejection, protected file access, audit entries, role-scoped scheduled hours and operator seed reset.
-- [ ] NFR-5 Branding: the UI and public URL use the fictional, neutral ShiftPatch brand and never Designli's name or assets.
+- [x] NFR-5 Branding: the UI and public URL use the fictional, neutral ShiftPatch brand and never Designli's name or assets.
 - [x] NFR-6 Data: the demo holds synthetic data only, and the upload form tells users not to upload real documents. Supports FR-7.
 - [ ] NFR-7 Usability: every screen handles loading, empty and error states, and a first-time reviewer can complete the main flow without instructions.
 - [ ] NFR-8 Static security: at submission, a full dependency audit including dev dependencies reports no high or critical vulnerabilities, and an OWASP-rules static scan reports no high-severity findings. CI runs both.

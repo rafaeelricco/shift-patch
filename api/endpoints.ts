@@ -11,6 +11,8 @@ export {
   type AuditEntry,
   type CancelReason,
   type CredentialSummary,
+  type PendingCredential,
+  type CredentialDecision,
   type TimesheetRow,
   type NoParams,
   type ShiftParams,
@@ -87,6 +89,18 @@ const schema_credential = s.object({
   ),
 })
 type CredentialSummary = s.Infer<typeof schema_credential>
+
+const schema_credential_decision = s.stringEnum(["approved", "rejected"])
+type CredentialDecision = s.Infer<typeof schema_credential_decision>
+
+const schema_pending_credential = s.object({
+  id: s.string,
+  nurseName: s.string,
+  fileName: s.string,
+  expiresOn: DateOnly.schema,
+  uploadedAt: POSIX.schema,
+})
+type PendingCredential = s.Infer<typeof schema_pending_credential>
 
 // FR-9.1: filled shifts only, with scheduled hours worked out on the server (FR-9.2).
 const schema_timesheet_row = s.object({
@@ -170,6 +184,15 @@ const api = {
   adminShifts: new QueryEndpoint({
     path: (_: NoParams) => "/api/admin/shifts",
     response: s.object({ shifts: s.array(schema_admin_shift) }),
+  }),
+  pendingCredentials: new QueryEndpoint({
+    path: (_: NoParams) => "/api/admin/credentials",
+    response: s.object({ uploads: s.array(schema_pending_credential) }),
+  }),
+  reviewCredential: new CommandEndpoint({
+    path: ({ id }: { id: string }) => `/api/admin/credentials/${encodeURIComponent(id)}/review`,
+    request: s.object({ decision: schema_credential_decision }),
+    response: s.object({ id: s.string, status: schema_credential_decision }),
   }),
   auditLog: new QueryEndpoint({
     path: (_: NoParams) => "/api/admin/audit",
