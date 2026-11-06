@@ -409,7 +409,11 @@ test("FR-7.7 only the uploader and the admin can retrieve a document", async ({ 
     expect(Buffer.compare(await res.body(), PDF)).toBe(0)
   }
 
-  for (const who of ["nurse-1", "agency-a"] as const) {
+  const otherNurse = await documentOf(request, id, await apiToken(request, "nurse-1"))
+  expect(otherNurse.status()).toBe(404)
+  expect(await decoded(otherNurse, ERROR)).toEqual({ error: "Document not found" })
+
+  for (const who of ["agency-a", "agency-b"] as const) {
     const res = await documentOf(request, id, await apiToken(request, who))
     expect(res.status()).toBe(403)
     expect(await decoded(res, ERROR)).toEqual({ error: "You don't have access to this" })
