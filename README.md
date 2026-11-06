@@ -12,7 +12,7 @@ Use Node.js 24, pnpm 10.33.0 and PostgreSQL 17. The pnpm version is pinned in `p
 pnpm install --frozen-lockfile
 ```
 
-For a new setup, copy `.env.example` to `.env.local` and fill in the server-only settings below. Use a development database separate from the deployed app and the disposable E2E database. The database role must be able to create tables, indexes and sequences. The first database request creates the schema and seeds the sample data; subsequent starts preserve existing data.
+For a new setup, copy `.env.example` to `.env.local` and fill in the server-only settings below. Use a development database separate from the deployed app and the disposable E2E database. The database role must be able to create tables, indexes and sequences. The first database request applies the schema migrations and seeds the sample data; subsequent starts preserve existing data.
 
 | Setting             | Purpose                                                                                         |
 | ------------------- | ----------------------------------------------------------------------------------------------- |
@@ -42,7 +42,7 @@ All five published demo accounts use the password `Trial2026!`. They contain syn
 
 Each role has one landing screen. Use its account menu to sign out and switch accounts. Nurses browse both agencies; agency screens and scheduled hours are scoped to the signed-in account. Admin coverage and audit views span the platform. Uploaded renewals remain pending until an admin approves them; rejection leaves the current approved credential unchanged.
 
-The sample shifts deliberately retain their supplied historical dates. Overnight hours and credential eligibility use facility time in `America/New_York`. Scheduled hours are planned coverage, not worked or approved timesheets.
+The sample shifts deliberately retain their supplied historical dates. Shift dates and clock times render as supplied. Current-date rules and instant displays use UTC. Scheduled hours are planned coverage, not worked or approved timesheets.
 
 ## Verification
 
@@ -74,6 +74,14 @@ Use Semgrep 1.183.0, matching CI. High/critical dependency findings or ERROR-sev
 `SPEC.md` is the requirement and verification ledger. Its checked items need a passing automated check or deployed browser evidence. The technical API contract and required test IDs are in `docs/ShiftPatch-Technical-Spec.md`.
 
 For deployed acceptance, use the Codex browser to exercise both agencies, both nurses and the admin at the public URL. Verify posting, claim/expiry blocking, cancellation and no-show, renewal approval/rejection, protected documents, audit entries, scoped hours, all 15 test IDs and action notifications. Measure admin updates within five seconds without reloading. Same-host tabs share login state; use verified hostnames of the same deployment for simultaneous role sessions, after checking each account on the canonical public URL. Record the revision, environment, date and observed results in `SPEC.md`.
+
+## Database migrations
+
+The first database request in each process checks `schema_migrations` under the existing setup advisory lock. It applies unapplied versions in order, then performs the existing first-seed check. Each version's DDL and ledger entry commit together; a failure rolls back the setup transaction and the next request retries.
+
+Applied versions are immutable. Add schema changes by appending a new version in `lib/db.ts`. Version 1 is the original idempotent schema; a database without a ledger adopts it once without overwriting data, sessions, audit history or the shift-number sequence. Version 2 adds the index used to expire old login failures. Later starts skip recorded versions.
+
+Migrations are additive. Reverting application code leaves applied schema changes in place; there is no destructive down-migration or automatic reset. Exercise migration changes only against a disposable local database before rollout.
 
 ## Operator seed reset
 

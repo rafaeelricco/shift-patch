@@ -153,7 +153,6 @@
   --animate-spinner: spin 700ms linear infinite;
   --animate-pulse-opacity: pulse-opacity 2s linear infinite;
   --animate-shimmer: shimmer 2s linear infinite;
-  --animate-banner-in: banner-in var(--transition-duration-relaxed) var(--cubic-enter);
   --animate-fade-in: fade-in var(--transition-duration-relaxed) var(--cubic-enter);
   --animate-rise-in: rise-in var(--transition-duration-relaxed) var(--cubic-enter) both;
   /* Complete shared scales and isolated site utilities. */
@@ -2368,12 +2367,5 @@
   from {
     opacity: 0;
     transform: translateY(8px);
-  }
-}
-
-@keyframes banner-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
   }
 }

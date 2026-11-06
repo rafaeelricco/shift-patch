@@ -38,15 +38,15 @@ type User = s.Infer<typeof schema_user>
 
 // Technical spec: "Every route that returns a shift ... returns the same shape". Strings exactly as the API sends them (time.md).
 const shift_fields = {
-  id: s.string,
-  agencyId: s.string,
+  id: Id.schema<"Shift">(),
+  agencyId: Id.schema<"User">(),
   agencyName: s.string,
   role: s.stringEnum(["RN", "LPN"]),
   date: s.string,
   startTime: s.string,
   endTime: s.string,
   status: s.stringEnum(["open", "filled"]), // never "cancelled" (FR-6.9)
-  claimedBy: s.nullable(s.string),
+  claimedBy: s.nullable(Id.schema<"User">()),
 }
 const schema_shift = s.object(shift_fields)
 type Shift = s.Infer<typeof schema_shift>
@@ -81,7 +81,7 @@ const schema_credential = s.object({
   approved: s.nullable(s.object({ expiresOn: DateOnly.schema, state: s.stringEnum(["valid", "expired"]) })),
   latest: s.nullable(
     s.object({
-      id: s.string,
+      id: Id.schema<"CredentialUpload">(),
       expiresOn: DateOnly.schema,
       status: s.stringEnum(["pending", "approved", "rejected"]),
       fileName: s.string,
@@ -94,7 +94,7 @@ const schema_credential_decision = s.stringEnum(["approved", "rejected"])
 type CredentialDecision = s.Infer<typeof schema_credential_decision>
 
 const schema_pending_credential = s.object({
-  id: s.string,
+  id: Id.schema<"CredentialUpload">(),
   nurseName: s.string,
   fileName: s.string,
   expiresOn: DateOnly.schema,
@@ -104,10 +104,10 @@ type PendingCredential = s.Infer<typeof schema_pending_credential>
 
 // FR-9.1: filled shifts only, with scheduled hours worked out on the server (FR-9.2).
 const schema_timesheet_row = s.object({
-  shiftId: s.string,
-  nurseId: s.string,
+  shiftId: Id.schema<"Shift">(),
+  nurseId: Id.schema<"User">(),
   nurseName: s.string,
-  agencyId: s.string,
+  agencyId: Id.schema<"User">(),
   agencyName: s.string,
   date: s.string,
   startTime: s.string,
@@ -123,25 +123,25 @@ type AdminShift = s.Infer<typeof schema_admin_shift>
 
 // FR-8.1 and FR-6.6: one audit_log row with its names resolved. The actor is null for the operator seed reset.
 const schema_audit_entry = s.object({
-  id: s.string,
+  id: Id.schema<"AuditEntry">(),
   at: POSIX.schema,
-  actorId: s.nullable(s.string),
+  actorId: s.nullable(Id.schema<"User">()),
   actorName: s.nullable(s.string),
   action: s.string,
   recordId: s.string,
   reason: s.nullable(s.string),
-  previousNurseId: s.nullable(s.string),
+  previousNurseId: s.nullable(Id.schema<"User">()),
   previousNurseName: s.nullable(s.string),
 })
 type AuditEntry = s.Infer<typeof schema_audit_entry>
 
 type NoParams = Record<string, never>
-type ShiftParams = { id: string }
-type AgencyParams = { agencyId: string }
+type ShiftParams = { id: Shift["id"] }
+type AgencyParams = { agencyId: User["id"] }
 const shiftPath =
   (action: "claim" | "cancel") =>
   ({ id }: ShiftParams): string =>
-    `/api/shifts/${encodeURIComponent(id)}/${action}`
+    `/api/shifts/${encodeURIComponent(id.value)}/${action}`
 
 const api = {
   login: new PlainEndpoint({
@@ -158,8 +158,8 @@ const api = {
   postShift: new PlainEndpoint({ path: "/api/shifts", request: schema_new_shift, response: schema_shift }),
   // FR-2.8: the full shift shape, exactly { agencyId, shifts } (NFR-1).
   agencyShifts: new QueryEndpoint({
-    path: ({ agencyId }: AgencyParams) => `/api/agencies/${encodeURIComponent(agencyId)}/shifts`,
-    response: s.object({ agencyId: s.string, shifts: s.array(schema_shift) }),
+    path: ({ agencyId }: AgencyParams) => `/api/agencies/${encodeURIComponent(agencyId.value)}/shifts`,
+    response: s.object({ agencyId: Id.schema<"User">(), shifts: s.array(schema_shift) }),
   }),
   claimShift: new CommandEndpoint({ path: shiftPath("claim"), request: s.object({}), response: schema_shift }),
   cancelShift: new CommandEndpoint({
@@ -167,7 +167,7 @@ const api = {
     request: s.object({ reason: schema_cancel_reason }),
     response: s.object({
       ...shift_fields,
-      cancellation: s.object({ reason: schema_cancel_reason, previousNurseId: s.string }),
+      cancellation: s.object({ reason: schema_cancel_reason, previousNurseId: Id.schema<"User">() }),
     }),
   }),
   credential: new QueryEndpoint({ path: (_: NoParams) => "/api/credentials/me", response: schema_credential }),
@@ -190,9 +190,9 @@ const api = {
     response: s.object({ uploads: s.array(schema_pending_credential) }),
   }),
   reviewCredential: new CommandEndpoint({
-    path: ({ id }: { id: string }) => `/api/admin/credentials/${encodeURIComponent(id)}/review`,
+    path: ({ id }: { id: PendingCredential["id"] }) => `/api/admin/credentials/${encodeURIComponent(id.value)}/review`,
     request: s.object({ decision: schema_credential_decision }),
-    response: s.object({ id: s.string, status: schema_credential_decision }),
+    response: s.object({ id: Id.schema<"CredentialUpload">(), status: schema_credential_decision }),
   }),
   auditLog: new QueryEndpoint({
     path: (_: NoParams) => "/api/admin/audit",

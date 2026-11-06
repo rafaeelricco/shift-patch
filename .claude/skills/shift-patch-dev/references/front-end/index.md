@@ -40,18 +40,18 @@ Run the named leaf's `## Audit` before editing when the work touches:
 
 SPEC NFR-1 requires all 15 test IDs from `docs/ShiftPatch-Technical-Spec.md`, as `data-testid`, with their exact names, on the elements it describes. FR-1.8 says which role's screen shows which ones.
 
-| Test ID                                                             | How it attaches                                                                         |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `login-email-input`, `login-password-input`                         | `TextInput`'s `input: { "data-testid": … }`                                             |
-| `credential-expiry-date-input`                                      | Same, on `new TextInput({ type: "date" })`, never `DateInput`                           |
-| `credential-upload-input`                                           | A prop on `FileField` from `@ui/field`                                                  |
-| `login-submit-button`, `agency-post-shift-submit-button`            | A prop on `Button`                                                                      |
-| `shift-claim-button`, `shift-cancel-button`                         | A prop on `Button`, passed through `ShiftRow`'s `actions`                               |
-| `agency-post-shift-button`                                          | A prop on `Button`                                                                      |
-| `shift-list-item`                                                   | A prop on `ShiftRow`, which forwards it to the `<article>`                              |
-| `admin-shift-status-badge`                                          | A prop on `StatusBadge`                                                                 |
-| `admin-dashboard-shift-table`, `audit-log-table`, `timesheet-table` | `DataTable`'s `data-testid` prop, on the `<table>` (`tables.md`)                        |
-| `notification-banner`                                               | A prop on the inline `NotificationBanner` for errors or Sonner's `testId` for successes |
+| Test ID                                                             | How it attaches                                                  |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `login-email-input`, `login-password-input`                         | `TextInput`'s `input: { "data-testid": … }`                      |
+| `credential-expiry-date-input`                                      | Same, on `new TextInput({ type: "date" })`, never `DateInput`    |
+| `credential-upload-input`                                           | A prop on `FileField` from `@ui/field`                           |
+| `login-submit-button`, `agency-post-shift-submit-button`            | A prop on `Button`                                               |
+| `shift-claim-button`, `shift-cancel-button`                         | A prop on `Button`, passed through `ShiftRow`'s `actions`        |
+| `agency-post-shift-button`                                          | A prop on `Button`                                               |
+| `shift-list-item`                                                   | A prop on `ShiftRow`, which forwards it to the `<article>`       |
+| `admin-shift-status-badge`                                          | A prop on `StatusBadge`                                          |
+| `admin-dashboard-shift-table`, `audit-log-table`, `timesheet-table` | `DataTable`'s `data-testid` prop, on the `<table>` (`tables.md`) |
+| `notification-banner`                                               | Sonner's `testId` for login, session expiry and action outcomes  |
 
 ## Stop and ask
 

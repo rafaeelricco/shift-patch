@@ -5,7 +5,6 @@ import { Id } from "@lib/id"
 import { audit } from "@lib/audit"
 import { authorize } from "@lib/auth"
 import { credentialSummary, lockCredential } from "@lib/credentials"
-import { facilityToday } from "@lib/facility"
 import { Future } from "@lib/future"
 import { DateOnly } from "@lib/time"
 import { json, failure, respond, fromDb } from "@lib/http"
@@ -34,7 +33,7 @@ function expiryOf(request: Request): Future<Response, DateOnly> {
   return Future.fromResult(s.decode(DateOnly.schema, raw))
     .mapRej(() => failure(400, "Enter a valid expiry date"))
     .chain((date) =>
-      date.compare(facilityToday()) < 0 ?
+      date.compare(DateOnly.todayUTC()) < 0 ?
         Future.reject(failure(400, "Expiry date is in the past"))
       : Future.resolve(date)
     )
@@ -89,26 +88,28 @@ export async function POST(request: Request): Promise<Response> {
             return Future.reject<Response, Response>(failure(400, "Choose a document to upload"))
           const type = sniff(bytes)
           if (type === null) return Future.reject<Response, Response>(failure(415, WRONG_TYPE))
-          const nurseId = nurse.id.value
-          const id = `upload-${Id.random<"Upload">().value}`
+          const nurseId = nurse.id
+          const id = new Id<"CredentialUpload">(`upload-${Id.random<"CredentialUpload">().value}`)
           return db
             .transaction((tx) =>
               lockCredential(tx, nurseId)
                 // FR-7.5: a new upload replaces this nurse's pending one and its document.
                 .chain(() =>
-                  tx.execute(sql`DELETE FROM credential_uploads WHERE nurse_id = ${nurseId} AND status = 'pending'`)
+                  tx.execute(
+                    sql`DELETE FROM credential_uploads WHERE nurse_id = ${nurseId.value} AND status = 'pending'`
+                  )
                 )
                 .chain(() =>
                   tx.execute(sql`INSERT INTO credential_uploads
                     (id, nurse_id, expires_on, status, content_type, file_name, byte_size, document)
-                    VALUES (${id}, ${nurseId}, ${expiresOn.pretty()}, 'pending', ${type}, ${fileName(request)},
+                    VALUES (${id.value}, ${nurseId.value}, ${expiresOn.pretty()}, 'pending', ${type}, ${fileName(request)},
                       ${bytes.byteLength}, ${Buffer.from(bytes)})`)
                 )
                 .chain(() =>
                   audit(tx, {
                     actorId: nurseId,
                     action: "credential.uploaded",
-                    recordId: id,
+                    recordId: id.value,
                     reason: null,
                     previousNurseId: null,
                   })

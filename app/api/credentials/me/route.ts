@@ -9,9 +9,7 @@ import { json, respond, fromDb } from "@lib/http"
 export async function GET(request: Request): Promise<Response> {
   return respond(
     authorize(request, ["nurse"]).chain((nurse) =>
-      credentialSummary(db, nurse.id.value).bimap(fromDb, (summary) =>
-        json(200, s.encode(api.credential.response, summary))
-      )
+      credentialSummary(db, nurse.id).bimap(fromDb, (summary) => json(200, s.encode(api.credential.response, summary)))
     )
   )
 }

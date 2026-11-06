@@ -1,6 +1,7 @@
 import "@/app/globals.css"
 
 import { type Metadata, type Viewport } from "next"
+import { Toaster } from "@ui/sonner"
 
 const siteName = "ShiftPatch"
 const title = "ShiftPatch | Real-time nursing shift coverage"
@@ -48,7 +49,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        {children}
+        <Toaster />
+      </body>
     </html>
   )
 }

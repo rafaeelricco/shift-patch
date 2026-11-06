@@ -1,6 +1,6 @@
 # Forms and API integration
 
-Every frontend write follows one recipe: pick a typed `api.*` entry, fire it with **`call(endpoint, body)`** (which returns a lazy **`Future`**), and handle the outcome with **`.fork(onError, onSuccess)`** at the boundary. Build the inputs with **`useForm`**: **config classes** for `fields`, a `validate` keyed to those fields, and `<FormInput>` to render each one. Model submit state as a **`RemoteData`** cell, and report the outcome in the one **`NotificationBanner`** (SPEC FR-11.4).
+Every frontend write follows one recipe: pick a typed `api.*` entry, fire it with **`call(endpoint, body)`** (which returns a lazy **`Future`**), and handle the outcome with **`.fork(onError, onSuccess)`** at the boundary. Build the inputs with **`useForm`**: **config classes** for `fields`, a `validate` keyed to those fields, and `<FormInput>` to render each one. Model submit state as a **`RemoteData`** cell, and report outcomes through action feedback (see `./pages.md` §4), while field validation stays inline.
 
 Page that hosts a form: `./pages.md`. Collection a write mutates: `./tables.md`. HTTP helpers live in `api/request.ts`, the `api` object in `api/endpoints.ts`.
 
@@ -26,11 +26,11 @@ Forms and API Integration Audit:
 
 ## Canonical references (by role)
 
-- **`@api/endpoints`**: the `api` object. Each entry is a `PlainEndpoint` from `@lib/endpoint`, with its path and schemas.
+- **`@api/endpoints`**: the `api` object. Entries use `QueryEndpoint`, `CommandEndpoint`, `PlainEndpoint` or `UploadEndpoint` from `@lib/endpoint`, with their paths and schemas.
 - **`@api/request`**: `call(endpoint, body)` → `Future<FetchError, Res>`, `upload(endpoint, file, headers)`, and `fetchErrorToString`.
 - **`@ui/forms`**: `useForm`, `FormInput`, the `FormOutputs` type, and config classes (`TextInput`, `TextareaInput`, `DateInput`, `TimeInput`, `CheckboxInput`, `MoneyInput`, `ComboboxInput`, `SelectInput`, `TagsInput`).
 - **`@ui/field`**: `FileField`, the one file control.
-- **`@ui/notification-banner`**: `NotificationBanner`, type `Notice`.
+- **Action feedback**: the page's `useActionFeedback` helper; see `./pages.md` §4.
 - **`@lib/remote-data`**: `RemoteData`, `NotAsked`, `Loading`, `Failed`, `Ready`.
 - **`@lib/future`**: `Future`, and the `Cancel` that `.fork` returns.
 
@@ -38,7 +38,6 @@ Forms and API Integration Audit:
 
 ```ts
 import { FormInput, TextInput, TextareaInput, useForm } from "@ui/forms"
-import { NotificationBanner } from "@ui/notification-banner"
 import { api } from "@api/endpoints"
 import { call, fetchErrorToString, type FetchError } from "@api/request"
 import { type Cancel } from "@lib/future"
@@ -47,12 +46,12 @@ import { Failed, Loading, NotAsked, Ready, type RemoteData } from "@lib/remote-d
 
 ## 1. Calling the server
 
-Use the typed `api.*` entries. Never hand-roll `fetch` for a server route. `api` holds only what the app calls today, which is `api.login`. When `api.<name>` is absent, add it to `api/endpoints.ts` with the path and shape from `docs/ShiftPatch-Technical-Spec.md`:
+Use the typed `api.*` entries. Never hand-roll `fetch` for a server route. Inspect `api/endpoints.ts` for the current endpoint registry. When `api.<name>` is absent, add it there with the path and shape from `docs/ShiftPatch-Technical-Spec.md`. For example, the existing shift write is:
 
 ```ts
 postShift: new PlainEndpoint({
   path: "/api/shifts",
-  request: s.object({ role: s.stringEnum(["RN", "LPN"]), date: s.string, startTime: s.string, endTime: s.string }),
+  request: schema_new_shift,
   response: schema_shift,
 }),
 ```
@@ -72,9 +71,13 @@ cancel.current = call(api.postShift, body).fork(
 
 ## 2. The form (`useForm`)
 
+Each config owns its `initialState()`; each resulting state owns `withError()` so validation replaces the error without converting the stored value. `FormOutputs` derives each value type from those methods and `getValue()`.
+
 Define `fields` with **config classes** and a `validate` returning a per-field `string | null` map **keyed exactly to `fields`** (`null` means no error). `useForm` returns `{ fields, values, onSubmit, reset }`:
 
 ```ts
+import { DateOnly } from "@lib/time"
+
 const { fields, onSubmit } = useForm({
   fields: {
     role: new SelectInput({
@@ -84,7 +87,7 @@ const { fields, onSubmit } = useForm({
       getValue: (role) => role,
       getLabel: (role) => role,
     }),
-    date: new DateInput({ label: "Date", defaultValue: DateOnly.todayLocal("America/New_York") }),
+    date: new DateInput({ label: "Date", defaultValue: DateOnly.todayUTC() }),
   },
   validate: (values) => ({
     role: values.role === null ? "Pick a role." : null,
@@ -99,7 +102,7 @@ Render each field with `<FormInput config={fields.x} disabled={submit.isLoading}
 
 `onChange(values)` is called after each edit with every field's current value, for a form that saves as the user types. No ShiftPatch form needs it yet.
 
-Rows read from data (one field per list entry) get generated keys such as `` `${row.id}:reason` ``. Type them with a template-literal record, e.g. ``Record<`reason:${string}`, SelectInput<CancelReason>>``, and treat a lookup as possibly `undefined`.
+Rows read from data (one field per list entry) get generated keys such as `` `${row.id.value}:reason` ``. Type them with a template-literal record, e.g. ``Record<`reason:${string}`, SelectInput<CancelReason>>``, and treat a lookup as possibly `undefined`.
 
 ## 3. Boundary conversions
 
@@ -123,14 +126,14 @@ const send = (event: FormEvent) =>
   })(event)
 ```
 
-Keep the error typed in the cell and convert it where it renders: `fetchErrorToString(submit.error)` in a `NotificationBanner`. A form that unmounts on success (sign-in, a closed post form) never needs `Ready`.
+Keep the error typed in the cell and publish its message from the failure callback through action feedback (see `./pages.md` §4). A form that unmounts on success (sign-in, a closed post form) never needs `Ready`.
 
 ## 5. Test IDs, dates and files
 
-- **Test IDs.** `TextInput` takes its test ID in `input: { "data-testid": … }`. Every other config takes `testId`, forwarded to its control or trigger. `Button`, `FileField` and `NotificationBanner` take `data-testid` as a prop. Names are in `./index.md`.
+- **Test IDs.** `TextInput` takes its test ID in `input: { "data-testid": … }`. Every other config takes `testId`, forwarded to its control or trigger. `Button` and `FileField` take `data-testid` as a prop; notifications use Sonner's `testId`. Names are in `./index.md`.
 - **`credential-expiry-date-input` is a native date input:** `new TextInput({ type: "date" })`. `DateInput` is a popover button, so a test filling that field would fail. A date no test types into can use `DateInput`.
 - **`credential-upload-input` is a `FileField`** from `@ui/field`, because `FormInput` has no file config. Hold the chosen `File` in its own state beside the form, and validate it in the submit handler. `upload` sends it as the raw request body.
-- **Action feedback.** FR-11.4 uses a single `notification-banner` test ID. Each signed-in screen shares one inline error notice and uses Sonner for success confirmations.
+- **Action feedback.** Follow the error and success surfaces in `./pages.md` (§4).
 
 ## Do / Do not
 
@@ -145,80 +148,13 @@ Keep the error typed in the cell and convert it where it renders: `fetchErrorToS
 
 ## Examples
 
-`call` source: `api/request.ts`. Registry source: `api/endpoints.ts`. `api.uploadCredential` exists (Nurse screen); `api.postShift` below is illustrative until the Agency screen lands.
+`call` source: `api/request.ts`. Registry source: `api/endpoints.ts`. `api.uploadCredential` serves the nurse screen and `api.postShift` serves the agency screen.
 
-Catalog entries are self-contained (`<form>` boilerplate repeated), so any one block stands alone. Each file needs `"use client"` at the top.
+The write examples receive `onDone` from the owning screen, which maps outcomes to its action-feedback helper. Catalog entries are self-contained (`<form>` boilerplate repeated), so any one block stands alone. Each file needs `"use client"` at the top.
 
 ### A worked write flow: sign-in
 
-`useForm` and `validate` → `RemoteData` submit cell → `Future` forked, its cancel kept for unmount → `NotificationBanner` on `Failed`. A wrong password rejects with `Invalid email or password`.
-
-```tsx
-import { type FormEvent, useEffect, useRef, useState } from "react"
-import { type Cancel } from "@lib/future"
-import { Failed, Loading, NotAsked, type RemoteData } from "@lib/remote-data"
-import { signIn } from "@lib/session"
-import { fetchErrorToString, type FetchError } from "@api/request"
-import { Button } from "@ui/button"
-import { FormInput, TextInput, useForm } from "@ui/forms"
-import { NotificationBanner } from "@ui/notification-banner"
-
-function LoginForm() {
-  const [submit, setSubmit] = useState<RemoteData<FetchError, never>>(NotAsked())
-  const cancel = useRef<Cancel>(() => {})
-  useEffect(() => () => cancel.current(), [])
-
-  const { fields, onSubmit } = useForm({
-    fields: {
-      email: new TextInput({
-        label: "Email",
-        type: "email",
-        defaultValue: "",
-        input: { autoComplete: "email", "data-testid": "login-email-input" },
-      }),
-      password: new TextInput({
-        label: "Password",
-        type: "password",
-        defaultValue: "",
-        input: { autoComplete: "current-password", "data-testid": "login-password-input" },
-      }),
-    },
-    validate: (values) => ({
-      email:
-        values.email.trim() === "" ? "Enter your email address."
-        : !values.email.includes("@") ? "Enter a valid email address."
-        : null,
-      password: values.password === "" ? "Enter your password." : null,
-    }),
-  })
-
-  const send = (event: FormEvent) =>
-    void onSubmit((values) => {
-      if (submit.isLoading) return
-      setSubmit(Loading())
-      cancel.current = signIn(values.email.trim(), values.password).fork(
-        (error) => setSubmit(Failed(error)),
-        () => {} // the session commits, the gate swaps the screen, and this form unmounts
-      )
-    })(event)
-
-  return (
-    <form noValidate onSubmit={send} className="flex flex-col gap-4">
-      {submit instanceof Failed ?
-        <NotificationBanner
-          data-testid="notification-banner"
-          notice={{ kind: "error", message: fetchErrorToString(submit.error) }}
-        />
-      : null}
-      <FormInput config={fields.email} disabled={submit.isLoading} />
-      <FormInput config={fields.password} disabled={submit.isLoading} />
-      <Button type="submit" size="xl" className="w-full" loading={submit.isLoading} data-testid="login-submit-button">
-        Sign in
-      </Button>
-    </form>
-  )
-}
-```
+The implementation is `LoginForm` in `app/page.tsx`: `useForm` → `RemoteData` submit cell → cancellable `Future` → `useActionFeedback` in the failure callback. The session gate replaces the form on success. A failed attempt preserves the email, clears the password and reports the server message. Session expiry uses the same feedback helper. See `./pages.md` §4 for notification ownership.
 
 ### A worked write flow: post a shift
 
@@ -233,11 +169,10 @@ import { Failed, Loading, NotAsked, type RemoteData } from "@lib/remote-data"
 import { DateOnly } from "@lib/time"
 import { Button } from "@ui/button"
 import { FormInput, SelectInput, TextInput, useForm } from "@ui/forms"
-import { type Notice } from "@ui/notification-banner"
 
 const SHIFT_ROLES = ["RN", "LPN"] as const
 
-function PostShiftForm({ onDone }: { onDone: (notice: Notice) => void }) {
+function PostShiftForm({ onDone }: { onDone: (kind: "success" | "error", message: string) => void }) {
   const [submit, setSubmit] = useState<RemoteData<FetchError, never>>(NotAsked())
   const cancel = useRef<Cancel>(() => {})
   useEffect(() => () => cancel.current(), [])
@@ -254,7 +189,7 @@ function PostShiftForm({ onDone }: { onDone: (notice: Notice) => void }) {
       date: new TextInput({
         label: "Date",
         type: "date",
-        defaultValue: DateOnly.todayLocal("America/New_York").pretty(),
+        defaultValue: DateOnly.todayUTC().pretty(),
       }),
       startTime: new TextInput({ label: "Start time", type: "time", defaultValue: "07:00" }),
       endTime: new TextInput({ label: "End time", type: "time", defaultValue: "19:00" }),
@@ -280,9 +215,9 @@ function PostShiftForm({ onDone }: { onDone: (notice: Notice) => void }) {
       cancel.current = call(api.postShift, { role: shiftRole, date, startTime, endTime }).fork(
         (error) => {
           setSubmit(Failed(error))
-          onDone({ kind: "error", message: fetchErrorToString(error) })
+          onDone("error", fetchErrorToString(error))
         },
-        () => onDone({ kind: "success", message: "Shift posted" })
+        () => onDone("success", "Shift posted")
       )
     })(event)
 
@@ -315,9 +250,8 @@ import { Failed, Loading, NotAsked, type RemoteData } from "@lib/remote-data"
 import { Button } from "@ui/button"
 import { FileField } from "@ui/field"
 import { FormInput, TextInput, useForm } from "@ui/forms"
-import { type Notice } from "@ui/notification-banner"
 
-function CredentialForm({ onDone }: { onDone: (notice: Notice) => void }) {
+function CredentialForm({ onDone }: { onDone: (kind: "success" | "error", message: string) => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | undefined>(undefined)
   const [submit, setSubmit] = useState<RemoteData<FetchError, never>>(NotAsked())
@@ -347,13 +281,13 @@ function CredentialForm({ onDone }: { onDone: (notice: Notice) => void }) {
       cancel.current = upload(api.uploadCredential, file, { "X-Expiry-Date": values.expiry }).fork(
         (error) => {
           setSubmit(Failed(error))
-          onDone({ kind: "error", message: fetchErrorToString(error) })
+          onDone("error", fetchErrorToString(error))
         },
         () => {
           setSubmit(NotAsked())
           setFile(null)
           reset()
-          onDone({ kind: "success", message: "Credential submitted for review" })
+          onDone("success", "Credential submitted for review")
         }
       )
     })(event)

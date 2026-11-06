@@ -1,4 +1,5 @@
 import * as s from "@lib/json/schema"
+import { Id } from "@lib/id"
 import { api } from "@api/endpoints"
 import { db, sql } from "@lib/db"
 import { authorize } from "@lib/auth"
@@ -9,14 +10,14 @@ import { POSIX } from "@lib/time"
 const LIMIT = 200
 
 const schema_row = s.object({
-  id: s.string,
+  id: Id.schema<"AuditEntry">(),
   at_ms: POSIX.schema,
-  actor_id: s.nullable(s.string),
+  actor_id: s.nullable(Id.schema<"User">()),
   actor_name: s.nullable(s.string),
   action: s.string,
   record_id: s.string,
   reason: s.nullable(s.string),
-  previous_nurse_id: s.nullable(s.string),
+  previous_nurse_id: s.nullable(Id.schema<"User">()),
   previous_nurse_name: s.nullable(s.string),
 })
 

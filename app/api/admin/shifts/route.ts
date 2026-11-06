@@ -1,4 +1,5 @@
 import * as s from "@lib/json/schema"
+import { Id } from "@lib/id"
 import { api } from "@api/endpoints"
 import { db, sql } from "@lib/db"
 import { authorize } from "@lib/auth"
@@ -6,14 +7,14 @@ import { json, respond, fromDb } from "@lib/http"
 import { toApiShift } from "@lib/shifts"
 
 const schema_row = s.object({
-  id: s.string,
-  agency_id: s.string,
+  id: Id.schema<"Shift">(),
+  agency_id: Id.schema<"User">(),
   agency_name: s.string,
   role: s.stringEnum(["RN", "LPN"]),
   date: s.string,
   start_time: s.string,
   end_time: s.string,
-  claimed_by: s.nullable(s.string),
+  claimed_by: s.nullable(Id.schema<"User">()),
   nurse_name: s.nullable(s.string),
 })
 

@@ -1,4 +1,5 @@
 import * as s from "@lib/json/schema"
+import { Id } from "@lib/id"
 import { api } from "@api/endpoints"
 import { db, sql, type DbError } from "@lib/db"
 import { audit } from "@lib/audit"
@@ -39,13 +40,13 @@ export async function POST(request: Request): Promise<Response> {
                     VALUES ('shift-' || nextval('shift_number'), ${agency.id.value}, ${body.role}, ${body.date},
                             ${body.startTime}, ${body.endTime})
                     RETURNING id`,
-                  s.object({ id: s.string })
+                  s.object({ id: Id.schema<"Shift">() })
                 )
                 .chain(({ id }) =>
                   audit(tx, {
-                    actorId: agency.id.value,
+                    actorId: agency.id,
                     action: "shift.posted",
-                    recordId: id,
+                    recordId: id.value,
                     reason: null,
                     previousNurseId: null,
                   }).chain(() => shiftById(tx, id))
