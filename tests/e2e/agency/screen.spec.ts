@@ -168,7 +168,7 @@ test("FR-2.10 the form cannot be closed while a post is in flight, so its outcom
 
 test("FR-6.7 after an agency cancel, focus stays on that shift's row", async ({ page }) => {
   await signInAs(page, "agency-a")
-  await card(page, "2026-10-03").getByTestId("shift-cancel-button").click({ delay: 2100 })
+  await card(page, "2026-10-03").getByTestId("shift-cancel-button").click()
   await expectBanner(page, "Shift cancelled, now open")
   await expect(card(page, "2026-10-03")).toContainText("No nurse yet")
   await expect(card(page, "2026-10-03")).toBeFocused()
@@ -207,7 +207,7 @@ test("FR-2.11 a claim made elsewhere shows on the agency screen without a reload
   await expect(page.getByTestId("shift-cancel-button")).toHaveCount(2, POLL)
 })
 
-test("FR-6.7 FR-6.8 holding cancels once with reason advance and reopens the shift", async ({
+test("FR-6.7 FR-6.8 one click cancels once with reason advance and reopens the shift", async ({
   page,
   request,
   auditLog,
@@ -218,13 +218,9 @@ test("FR-6.7 FR-6.8 holding cancels once with reason advance and reopens the shi
   page.on("request", (req) => {
     if (req.method() === "POST" && req.url().endsWith("/api/shifts/shift-2/cancel")) cancellations++
   })
-  await expect(button).toHaveText("Hold to cancel")
-  await button.click()
-  await button.click({ delay: 1000 })
-  expect(cancellations).toBe(0)
-  await expect(card(page, "2026-10-03")).toContainText("filled")
+  await expect(button).toHaveText("Cancel shift")
   const sent = page.waitForRequest("**/api/shifts/shift-2/cancel")
-  await button.click({ delay: 2100 })
+  await button.click()
   expect((await sent).postDataJSON()).toEqual({ reason: "advance" })
   await expectBanner(page, "Shift cancelled, now open")
   expect(cancellations).toBe(1)
@@ -265,7 +261,7 @@ test("FR-6.7 a cancel the server refuses shows its message in the banner", async
     await request.post("/api/shifts/shift-2/cancel", { ...authed(token), data: { reason: "advance" } })
     await route.continue()
   })
-  await card(page, "2026-10-03").getByTestId("shift-cancel-button").click({ delay: 2100 })
+  await card(page, "2026-10-03").getByTestId("shift-cancel-button").click()
   await expectBanner(page, "Shift is already open")
   await expect(card(page, "2026-10-03")).toContainText("open", POLL)
 })
