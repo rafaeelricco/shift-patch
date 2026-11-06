@@ -66,7 +66,10 @@ test("errors expire after the default lifetime and hover pauses the remaining ti
 test("successes expire after the default lifetime", async ({ page }) => {
   await signInAs(page, "agency-a")
   await page.clock.install()
-  await page.getByTestId("shift-cancel-button").click()
+  await page.getByTestId("shift-cancel-button").focus()
+  await page.keyboard.down("Space")
+  await page.clock.runFor(2100)
+  await page.keyboard.up("Space")
   await expect(title(page)).toHaveText("Shift cancelled, now open")
   await expect(notification(page)).toHaveAttribute("data-type", "success")
   await page.mouse.move(0, 0)
