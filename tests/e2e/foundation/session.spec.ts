@@ -20,6 +20,7 @@ test("desktop sidebar starts folded, preserves dashboard edits, and remembers bo
   await expect(expand).toHaveAttribute("aria-expanded", "false")
   await expect(sidebar.getByRole("img", { name: "ShiftPatch" })).toBeVisible()
   await expect(page.getByRole("navigation", { name: "On this screen" })).toHaveCount(0)
+  await page.getByRole("button", { name: "Upload a renewal", exact: true }).click()
   await expiry.fill("2030-10-15")
 
   await expand.press("Enter")
@@ -88,7 +89,7 @@ test("a fresh browser context shares no session", async ({ page, browser }) => {
 test("each role screen has a top bar title and the account control", async ({ page }) => {
   for (const [id, title] of [
     ["nurse-1", "Shifts"],
-    ["agency-a", "Your shifts"],
+    ["agency-a", "Shifts"],
     ["admin-1", "Coverage"],
   ] as const) {
     await signInAs(page, id)

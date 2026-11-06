@@ -166,6 +166,7 @@ test("FR-3.6 a UI claim shows Shift claimed and moves the card to Your shifts wi
   await expect(claimed.getByTestId("shift-cancel-button")).toBeVisible()
   // The same document: a navigation would have dropped the marker.
   expect(await page.evaluate(() => (window as Window & { claimMarker?: number }).claimMarker)).toBe(1)
+  await expect(banner(page)).toHaveCount(0, { timeout: 6000 })
 
   await page.reload()
   await expect(mine(page).locator("article").filter({ hasText: "2026-10-02" })).toHaveCount(1)
@@ -275,6 +276,8 @@ test("FR-4.2 James's claim button stays visible and enabled and the banner shows
   const renewal = page.getByRole("button", { name: "Upload renewal" })
   await expect(renewal).toBeVisible()
   await expect(banner(page).getByRole("button", { name: "Upload renewal" })).toHaveCount(0)
+  await page.getByRole("button", { name: "Upload a renewal", exact: true }).click()
+  await expect(page.getByTestId("credential-upload-input")).toBeHidden()
   await renewal.click()
   await expect(page.getByTestId("credential-upload-input")).toBeFocused()
 

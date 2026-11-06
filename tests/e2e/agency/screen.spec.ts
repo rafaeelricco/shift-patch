@@ -39,41 +39,56 @@ test("FR-2.10 the post form opens with valid defaults and posts unchanged", asyn
   const sent = page.waitForRequest((req) => req.url().endsWith("/api/shifts") && req.method() === "POST")
   await page.getByTestId("agency-post-shift-submit-button").click()
   const body: unknown = (await sent).postDataJSON()
-  expect(body).toEqual({ role: "RN", date: relativeDate(0), startTime: "07:00", endTime: "19:00" })
-  await expectBanner(page, "Shift posted")
+  // Design canvas: the default day is tomorrow, so two clicks post a shift nobody has to fix.
+  expect(body).toEqual({ role: "RN", date: relativeDate(1), startTime: "07:00", endTime: "19:00" })
+  await expectBanner(page, `Shift posted: RN, ${relativeDate(1)}, 07:00 to 19:00`)
   await expect(page.getByTestId("agency-post-shift-submit-button")).toHaveCount(0)
-  await expect(card(page, relativeDate(0))).toContainText("RN shift")
-  await expect(card(page, relativeDate(0))).toContainText("open")
-  expect((await agencyShifts(request)).map((x) => x.date)).toContain(relativeDate(0))
+  await expect(card(page, relativeDate(1))).toContainText("RN")
+  await expect(card(page, relativeDate(1))).toContainText("open")
+  await expect(page.getByTestId("agency-post-shift-button")).toBeFocused()
+  expect((await agencyShifts(request)).map((x) => x.date)).toContain(relativeDate(1))
 })
 
 test("FR-2.10 the form posts edited values, including an overnight shift", async ({ page }) => {
   await signInAs(page, "agency-a")
   await page.getByTestId("agency-post-shift-button").click()
   const form = page.getByRole("form", { name: "Post a shift" })
-  await form.getByRole("combobox", { name: "Role" }).click()
-  await page.getByRole("option", { name: "LPN" }).click()
-  await form.getByLabel("Date").fill("2026-12-24")
-  await form.getByLabel("Start").fill("19:00")
-  await form.getByLabel("End").fill("07:00")
+  const day = relativeDate(3)
+  await form.getByRole("radiogroup", { name: "Role" }).getByRole("radio", { name: "LPN" }).check()
+  await form.getByRole("radio", { name: new RegExp(`^${day},`) }).check()
+  await form
+    .getByRole("radiogroup", { name: "Hours" })
+    .getByRole("radio", { name: /^Custom/ })
+    .check()
+  // Typed shorthand becomes HH:mm on blur (design canvas).
+  await form.getByLabel("Start").fill("1900")
+  await form.getByLabel("End").fill("7")
+  await form.getByLabel("End").blur()
+  await expect(form.getByLabel("End")).toHaveValue("07:00")
+  await expect(form).toContainText("19:00 to 07:00 next day, 12 scheduled hours")
   const sent = page.waitForRequest((req) => req.url().endsWith("/api/shifts") && req.method() === "POST")
   await page.getByTestId("agency-post-shift-submit-button").click()
-  expect((await sent).postDataJSON()).toEqual({ role: "LPN", date: "2026-12-24", startTime: "19:00", endTime: "07:00" })
-  await expectBanner(page, "Shift posted")
-  await expect(card(page, "2026-12-24")).toContainText("19:00 to 07:00")
+  expect((await sent).postDataJSON()).toEqual({ role: "LPN", date: day, startTime: "19:00", endTime: "07:00" })
+  await expectBanner(page, `Shift posted: LPN, ${day}, 19:00 to 07:00`)
+  await expect(card(page, day)).toContainText("19:00 to 07:00 next day")
 })
 
 test("FR-2.10 start equal to end is stopped in the form, with no request", async ({ page }) => {
   await signInAs(page, "agency-a")
   await page.getByTestId("agency-post-shift-button").click()
   const form = page.getByRole("form", { name: "Post a shift" })
+  await form
+    .getByRole("radiogroup", { name: "Hours" })
+    .getByRole("radio", { name: /^Custom/ })
+    .check()
   await form.getByLabel("End").fill("07:00")
   let posted = false
   page.on("request", (req) => {
     if (req.url().endsWith("/api/shifts") && req.method() === "POST") posted = true
   })
   await page.getByTestId("agency-post-shift-submit-button").click()
-  await expect(form.getByText("Start and end must differ")).toBeVisible()
+  await expect(form.getByText("Start and end times must differ")).toBeVisible()
+  await expect(form.getByLabel("End")).toBeFocused()
   expect(posted).toBe(false)
 })
 
@@ -101,15 +116,31 @@ test("FR-2.10 the form cannot be closed while a post is in flight, so its outcom
   await page.getByTestId("agency-post-shift-submit-button").click()
   await expect(page.getByTestId("agency-post-shift-button")).toBeDisabled()
   release()
-  await expectBanner(page, "Shift posted")
+  await expectBanner(page, `Shift posted: RN, ${relativeDate(1)}, 07:00 to 19:00`)
   await expect(page.getByTestId("agency-post-shift-button")).toBeEnabled()
 })
 
-test("FR-6.7 after an agency cancel, focus moves to the section heading", async ({ page }) => {
+test("FR-6.7 after an agency cancel, focus stays on that shift's row", async ({ page }) => {
   await signInAs(page, "agency-a")
   await card(page, "2026-10-03").getByTestId("shift-cancel-button").click()
   await expectBanner(page, "Shift cancelled, now open")
-  await expect(page.getByRole("heading", { name: "Your agency's shifts" })).toBeFocused()
+  await expect(card(page, "2026-10-03")).toContainText("No nurse yet")
+  await expect(card(page, "2026-10-03")).toBeFocused()
+})
+
+test("FR-6.7 after an agency cancel hides the shift, focus returns to the Filled filter", async ({ page }) => {
+  await signInAs(page, "agency-a")
+  const filter = shiftsRegion(page)
+    .getByRole("radiogroup", { name: "Filter shifts by status" })
+    .getByRole("radio", { name: "Filled", exact: true })
+  await filter.check()
+  const shift = card(page, "2026-10-03")
+  await shift.getByRole("button", { name: "Choose a cancellation reason" }).press("Enter")
+  await page.getByRole("menuitem", { name: /No-show/ }).press("Enter")
+  await expectBanner(page, "Shift cancelled, now open")
+  await expect(shift).toHaveCount(0)
+  await expect(filter).toBeChecked()
+  await expect(filter).toBeFocused()
 })
 
 test("FR-2.11 the screen lists only its own shifts with status and the covering nurse", async ({ page }) => {
@@ -157,14 +188,13 @@ test("FR-6.7 FR-6.8 one click cancels with the default reason advance and reopen
   ])
 })
 
-test("FR-6.8 the agency chooses no-show beside the button", async ({ page, auditLog }) => {
+test("FR-6.8 the agency records a no-show from the menu beside the button", async ({ page, auditLog }) => {
   await signInAs(page, "agency-a")
   const filled = card(page, "2026-10-03")
-  await expect(filled.getByRole("combobox", { name: "Reason" })).toContainText("Cancelled in advance")
-  await filled.getByRole("combobox", { name: "Reason" }).click()
-  await page.getByRole("option", { name: "No-show" }).click()
+  await filled.getByRole("button", { name: "Choose a cancellation reason" }).click()
+  await expect(page.getByRole("menuitem", { name: /Cancelled in advance/ })).toBeVisible()
   const sent = page.waitForRequest("**/api/shifts/shift-2/cancel")
-  await filled.getByTestId("shift-cancel-button").click()
+  await page.getByRole("menuitem", { name: /No-show/ }).click()
   expect((await sent).postDataJSON()).toEqual({ reason: "no-show" })
   await expectBanner(page, "Shift cancelled, now open")
   expect((await auditLog.entries("shift-2"))[0]).toMatchObject({ reason: "no-show", previous_nurse_id: "nurse-1" })

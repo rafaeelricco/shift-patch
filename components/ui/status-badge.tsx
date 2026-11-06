@@ -36,10 +36,15 @@ const badgeVariants = cva(
   }
 )
 
-function StatusBadge({ status, className, ...rest }: { status: Status } & Omit<ComponentProps<"span">, "children">) {
+function StatusBadge({
+  status,
+  label = status,
+  className,
+  ...rest
+}: { status: Status; label?: string } & Omit<ComponentProps<"span">, "children">) {
   return (
     <span className={cn(badgeVariants({ intent: STATUS_INTENT[status] }), className)} {...rest}>
-      <span className="supports-[text-box:trim-both_cap_alphabetic]:[text-box:trim-both_cap_alphabetic]">{status}</span>
+      <span className="supports-[text-box:trim-both_cap_alphabetic]:[text-box:trim-both_cap_alphabetic]">{label}</span>
     </span>
   )
 }

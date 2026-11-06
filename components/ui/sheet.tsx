@@ -24,7 +24,11 @@ const sheetVariants = cva(
   {
     variants: {
       side: {
-        right: "inset-y-0 right-0 w-3/4 max-w-96 rounded-l-(--modal-radius) [--sheet-from:calc(var(--spacing)*10)_0]",
+        // Floats 8px in from the edge (design canvas sheet). Below 640px it becomes a bottom sheet rounded on top.
+        right: cn(
+          "inset-y-2 right-2 w-[min(448px,calc(100%-16px))] rounded-3xl shadow-hairline [--outer-radius:var(--radius-3xl)] [--sheet-from:calc(var(--spacing)*6)_0]",
+          "max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:max-h-[calc(100%-24px)] max-sm:w-full max-sm:rounded-b-none max-sm:[--sheet-from:0_calc(var(--spacing)*6)]"
+        ),
         left: "inset-y-0 left-0 w-3/4 max-w-96 rounded-r-(--modal-radius) [--sheet-from:calc(var(--spacing)*-10)_0]",
         top: "inset-x-0 top-0 rounded-b-(--modal-radius) [--sheet-from:0_calc(var(--spacing)*-10)]",
         bottom: "inset-x-0 bottom-0 rounded-t-(--modal-radius) [--sheet-from:0_calc(var(--spacing)*10)]",

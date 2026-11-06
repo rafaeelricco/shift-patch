@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 
 const AGENCY = { id: "agency-a", name: "Sunrise Health Staffing", role: "agency" }
 const json = (body: unknown): Response => new Response(JSON.stringify(body), { status: 200 })
@@ -66,7 +66,8 @@ it("names the covering nurse only while the timesheet row matches the current cl
   await act(async () => {
     render(<Page />)
   })
-  expect(screen.getByText("Covered by Nurse A")).toBeTruthy()
+  const shiftsRegion = () => within(screen.getByRole("region", { name: "Your agency's shifts" }))
+  expect(shiftsRegion().getByText("Covered by Nurse A")).toBeTruthy()
 
   phase = 2 // nurse A's claim was cancelled and nurse B reclaimed shift-1
   await act(async () => {
@@ -74,8 +75,8 @@ it("names the covering nurse only while the timesheet row matches the current cl
   })
 
   // The shifts poll now says claimedBy=nurse-b; the card must not say Nurse A covers it.
-  expect(screen.queryByText("Covered by Nurse A")).toBeNull()
-  expect(screen.getByText("Covered by a nurse")).toBeTruthy()
+  expect(shiftsRegion().queryByText("Covered by Nurse A")).toBeNull()
+  expect(shiftsRegion().getByText("Covered by a nurse")).toBeTruthy()
 })
 
 it("a shift the poll already returned is not added twice when the POST answers", async () => {
@@ -117,7 +118,7 @@ it("a shift the poll already returned is not added twice when the POST answers",
     vi.advanceTimersByTime(3000)
   })
   expect(listCalls).toBe(2)
-  expect(screen.getAllByText("Waiting for a nurse")).toHaveLength(1)
+  expect(screen.getAllByText("No nurse yet")).toHaveLength(1)
 
   const errors = vi.spyOn(console, "error").mockImplementation(() => {})
   await act(async () => {
@@ -127,5 +128,5 @@ it("a shift the poll already returned is not added twice when the POST answers",
   expect(screen.getByText(/Couldn't refresh, showing/)).toBeTruthy()
   const dupKey = errors.mock.calls.some((args) => String(args[0]).includes("same key"))
   errors.mockRestore()
-  expect({ cards: screen.getAllByText("Waiting for a nurse").length, dupKey }).toEqual({ cards: 1, dupKey: false })
+  expect({ cards: screen.getAllByText("No nurse yet").length, dupKey }).toEqual({ cards: 1, dupKey: false })
 })

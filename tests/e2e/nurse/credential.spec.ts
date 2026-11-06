@@ -58,10 +58,8 @@ const documentOf = (request: APIRequestContext, id: string, token?: string) =>
 
 const banner = (page: Page) => page.getByTestId("notification-banner")
 const panel = (page: Page) => page.getByRole("region", { name: "Credential", exact: true })
-const row = (page: Page, term: "On file" | "Latest upload") =>
-  panel(page)
-    .locator('[data-slot="credential-row"]')
-    .filter({ has: page.locator("dt").getByText(term, { exact: true }) })
+const current = (page: Page) => panel(page).getByRole("region", { name: "Current credential" })
+const renewal = (page: Page) => panel(page).getByRole("region", { name: "Renewal", exact: true })
 const fileInput = (page: Page) => page.getByTestId("credential-upload-input")
 const dateInput = (page: Page) => page.getByTestId("credential-expiry-date-input")
 const submit = (page: Page) => panel(page).getByRole("button", { name: "Submit for review" })
@@ -97,10 +95,10 @@ test("FR-7.1 James uploads a PDF with an expiry date and sees Credential submitt
   await expect(banner(page)).toHaveCount(1)
 
   const check = async () => {
-    await expect(row(page, "Latest upload")).toContainText(future)
-    await expect(row(page, "Latest upload").getByText("pending", { exact: true })).toBeVisible()
-    await expect(row(page, "On file")).toContainText("2026-06-01")
-    await expect(row(page, "On file").getByText("expired", { exact: true })).toBeVisible()
+    await expect(renewal(page).locator("time")).toHaveAttribute("datetime", future)
+    await expect(renewal(page).getByText("In review", { exact: true })).toBeVisible()
+    await expect(current(page).locator("time")).toHaveAttribute("datetime", "2026-06-01")
+    await expect(current(page).getByText("Expired", { exact: true })).toBeVisible()
   }
   await check()
   await page.reload()
@@ -191,6 +189,7 @@ test("FR-7.2 over 4 MB is 413 { error: 'File must be 4 MB or smaller' } and exac
   expect(exact.status()).toBe(201)
 
   await signInAs(page, "nurse-2")
+  await renewal(page).getByRole("button", { name: "Replace upload" }).click()
   const sent = uploadsSent(page)
   await chooseFile(page, "big.pdf", "application/pdf", pdfOfSize(MAX + 1))
   await dateInput(page).fill(future)
@@ -293,21 +292,43 @@ test("FR-7.5 the approved date shows valid for Maria and expired for James", asy
   const inNinety = relativeDate(90)
   await setExpiry("nurse-1", inNinety)
   await signInAs(page, "nurse-1")
-  await expect(row(page, "On file")).toContainText(inNinety)
-  await expect(row(page, "On file").getByText("valid", { exact: true })).toBeVisible()
-  await expect(row(page, "On file").getByText("Expires in under 30 days")).toHaveCount(0)
+  await expect(current(page).locator("time")).toHaveAttribute("datetime", inNinety)
+  await expect(current(page).getByText("Approved", { exact: true })).toBeVisible()
+  await expect(current(page).getByText("Expires in under 30 days")).toHaveCount(0)
   await signOutVia(page, "nurse-1")
 
   await signInAs(page, "nurse-2")
-  await expect(row(page, "On file")).toContainText("2026-06-01")
-  await expect(row(page, "On file").getByText("expired", { exact: true })).toBeVisible()
+  await expect(current(page).locator("time")).toHaveAttribute("datetime", "2026-06-01")
+  await expect(current(page).getByText("Expired", { exact: true })).toBeVisible()
   await signOutVia(page, "nurse-2")
 
   await setExpiry("nurse-1", relativeDate(0))
   await signInAs(page, "nurse-1")
-  await expect(row(page, "On file")).toContainText(relativeDate(0))
-  await expect(row(page, "On file").getByText("valid", { exact: true })).toBeVisible()
-  await expect(row(page, "On file").getByText("Expires in under 30 days")).toBeVisible()
+  await expect(current(page).locator("time")).toHaveAttribute("datetime", relativeDate(0))
+  await expect(current(page).getByText("Approved", { exact: true })).toBeVisible()
+  await expect(current(page).getByText("Expires in under 30 days")).toBeVisible()
+})
+
+test("FR-7.5 a pending renewal keeps its filename and proposed expiry separate from the current credential", async ({
+  page,
+}) => {
+  const approved = relativeDate(90)
+  await setExpiry("nurse-1", approved)
+  await signInAs(page, "nurse-1")
+  await expect(current(page).getByText("Approved", { exact: true })).toBeVisible()
+  await expect(fileInput(page)).toBeHidden()
+  await renewal(page).getByRole("button", { name: "Upload a renewal" }).click()
+  await expect(fileInput(page)).toBeVisible()
+  await chooseFile(page, "renewal-sample.pdf", "application/pdf", PDF)
+  await dateInput(page).fill(future)
+  await submit(page).click()
+  await expect(renewal(page).getByText("In review", { exact: true })).toBeVisible()
+  await expect(renewal(page).getByText("renewal-sample.pdf", { exact: true })).toBeVisible()
+  await expect(renewal(page).locator("time")).toHaveAttribute("datetime", future)
+  await expect(current(page).locator("time")).toHaveAttribute("datetime", approved)
+  await expect(current(page).getByText("Approved", { exact: true })).toBeVisible()
+  await expect(fileInput(page)).toBeHidden()
+  await expect(renewal(page).getByRole("button", { name: "Replace upload" })).toBeFocused()
 })
 
 test("FR-7.5 the latest upload shows approved or rejected after review", async ({ page, request }) => {
@@ -320,7 +341,9 @@ test("FR-7.5 the latest upload shows approved or rejected after review", async (
     // The review itself is an Admin-phase route; set its outcome directly.
     await run(db.execute(sql`UPDATE credential_uploads SET status = ${status} WHERE id = ${id}`))
     await page.reload()
-    await expect(row(page, "Latest upload").getByText(status, { exact: true })).toBeVisible()
+    await expect(
+      renewal(page).getByText(status === "approved" ? "Approved" : "Rejected", { exact: true })
+    ).toBeVisible()
     expect((await me(request, token)).latest?.status).toBe(status)
   }
 })
@@ -347,8 +370,8 @@ test("FR-7.5 a new upload replaces the pending one and its document", async ({ p
   expect(summary.latest?.fileName).toBe("b.png")
 
   await signInAs(page, "nurse-2")
-  await expect(row(page, "Latest upload")).toContainText(later)
-  await expect(row(page, "Latest upload").getByText("pending", { exact: true })).toBeVisible()
+  await expect(renewal(page).locator("time")).toHaveAttribute("datetime", later)
+  await expect(renewal(page).getByText("In review", { exact: true })).toBeVisible()
 })
 
 test("FR-7.5 a network failure keeps the chosen file and date", async ({ page }) => {
