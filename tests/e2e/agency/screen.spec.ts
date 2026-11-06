@@ -90,7 +90,12 @@ test("FR-2.10 Enter posts custom shorthand without leaving the time field", asyn
 
   const sent = page.waitForRequest((req) => req.url().endsWith("/api/shifts") && req.method() === "POST")
   await end.press("Enter")
-  expect((await sent).postDataJSON()).toEqual({ role: "RN", date: relativeDate(1), startTime: "19:00", endTime: "07:00" })
+  expect((await sent).postDataJSON()).toEqual({
+    role: "RN",
+    date: relativeDate(1),
+    startTime: "19:00",
+    endTime: "07:00",
+  })
   await expectBanner(page, `Shift posted: RN, ${relativeDate(1)}, 19:00 to 07:00`)
 })
 
