@@ -2,16 +2,16 @@ import type { APIRequestContext, Page } from "@playwright/test"
 
 import { api } from "@api/endpoints"
 
-import { test, expect, signInAs, apiToken, authed, decoded, setExpiry, relativeDate } from "../fixtures"
+import { notification, test, expect, signInAs, apiToken, authed, decoded, setExpiry, relativeDate } from "../fixtures"
 
 const POLL = { timeout: 5_000 }
-const banner = (page: Page) => page.getByTestId("notification-banner")
+const banner = (page: Page) => notification(page)
 const shiftsRegion = (page: Page) => page.getByRole("region", { name: "Your agency's shifts" })
 const card = (page: Page, date: string) => shiftsRegion(page).locator("article").filter({ hasText: date })
 
 async function expectBanner(page: Page, text: string): Promise<void> {
   await expect(banner(page)).toHaveCount(1)
-  await expect(banner(page)).toHaveText(text)
+  await expect(banner(page).locator("[data-title]")).toHaveText(text)
 }
 
 async function agencyShifts(request: APIRequestContext) {
@@ -29,7 +29,7 @@ test("FR-1.10 the agency landing screen shows its three test IDs without navigat
   await expect(page.getByTestId("agency-post-shift-button")).toBeVisible()
   await expect(page.getByTestId("shift-cancel-button")).toHaveCount(1) // shift-2, the only filled one
   await expect(page.getByTestId("timesheet-table")).toBeVisible()
-  await expect(page.getByTestId("notification-banner")).toHaveCount(0)
+  await expect(notification(page)).toHaveCount(0)
 })
 
 test("FR-2.10 the post form opens with valid defaults and posts unchanged", async ({ page, request }) => {
@@ -113,9 +113,29 @@ test("FR-2.10 start equal to end is stopped in the form, with no request", async
     if (req.url().endsWith("/api/shifts") && req.method() === "POST") posted = true
   })
   await page.getByTestId("agency-post-shift-submit-button").click()
-  await expect(form.getByText("Start and end times must differ")).toBeVisible()
+  await expect(form.getByLabel("End")).toHaveAccessibleDescription("Start and end times must differ")
+  await expectBanner(page, "Start and end times must differ")
   await expect(form.getByLabel("End")).toBeFocused()
   expect(posted).toBe(false)
+})
+
+test("FR-11.4 a rejected Enter submit keeps its banner while normalizing the time fields", async ({ page }) => {
+  await signInAs(page, "agency-a")
+  await page.getByTestId("agency-post-shift-button").click()
+  const form = page.getByRole("form", { name: "Post a shift" })
+  await form
+    .getByRole("radiogroup", { name: "Hours" })
+    .getByRole("radio", { name: /^Custom/ })
+    .check()
+  const start = form.getByLabel("Start")
+  const end = form.getByLabel("End")
+  await start.fill("")
+  await end.fill("7")
+  await end.press("Enter")
+  await expect(start).toBeFocused()
+  await expect(end).toHaveValue("07:00")
+  await expect(start).toHaveAccessibleDescription("Enter a start time")
+  await expectBanner(page, "Enter a start time")
 })
 
 test("FR-2.10 a failed post shows an error in the banner and keeps the form", async ({ page }) => {
@@ -199,7 +219,7 @@ test("FR-6.7 FR-6.8 one click cancels with the default reason advance and reopen
   await expectBanner(page, "Shift cancelled, now open")
   await expect(card(page, "2026-10-03")).toContainText("open")
   await expect(page.getByTestId("shift-cancel-button")).toHaveCount(0)
-  expect((await agencyShifts(request)).find((x) => x.id === "shift-2")).toMatchObject({
+  expect((await agencyShifts(request)).find((x) => x.id.value === "shift-2")).toMatchObject({
     status: "open",
     claimedBy: null,
   })

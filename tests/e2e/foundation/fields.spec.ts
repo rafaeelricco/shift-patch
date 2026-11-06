@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test"
 
-test("empty field text shares placeholder metrics and entered text keeps its content size", async ({ page }) => {
+test("empty fields, placeholders and entered text use consistent 14px sizing", async ({ page }) => {
   await page.goto("/")
   const email = page.getByTestId("login-email-input")
   await expect(email).toBeVisible()
@@ -10,7 +10,7 @@ test("empty field text shares placeholder metrics and entered text keeps its con
   }))
   expect(metrics).toEqual({ control: "14px", placeholder: "14px" })
   await email.fill("nurse@example.com")
-  await expect(email).toHaveCSS("font-size", "16px")
+  await expect(email).toHaveCSS("font-size", "14px")
 })
 
 test("field hover tint leaves the inset border visible and yields to keyboard focus", async ({ page }) => {

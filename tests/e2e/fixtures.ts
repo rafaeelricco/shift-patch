@@ -4,6 +4,7 @@ export {
   ACCOUNTS,
   PASSWORD,
   signInAs,
+  notification,
   signOutVia,
   apiToken,
   authed,
@@ -28,7 +29,8 @@ import {
 import * as s from "@lib/json/schema"
 import { db, sql, SAMPLE } from "@lib/db"
 import { resetToSeed } from "@lib/seed"
-import { facilityToday } from "@lib/facility"
+import { DateOnly } from "@lib/time"
+import { Id } from "@lib/id"
 import type { Shift } from "@api/endpoints"
 
 type Account = (typeof SAMPLE.accounts)[number]
@@ -76,6 +78,11 @@ const test = base.extend<{ seeded: void; auditLog: AuditLog }>({
   },
 })
 
+/** The current outcome; Sonner briefly retains dismissed items for its exit transition. */
+function notification(page: Page) {
+  return page.getByTestId("notification-banner").and(page.locator('[data-removed="false"][data-visible="true"]'))
+}
+
 /** Signs in through the UI and waits for that role's landing screen. */
 async function signInAs(page: Page, id: AccountId): Promise<void> {
   await page.goto("/")
@@ -88,10 +95,15 @@ async function signInAs(page: Page, id: AccountId): Promise<void> {
 const account = (page: Page, id: AccountId) =>
   page.getByRole("button", { name: `Account: ${ACCOUNTS[id].name}, ${ACCOUNTS[id].role}` }).first()
 
-/** Sign out the way the canvas does it: the account control opens a menu with one Sign out item. */
+/** Sign out through the desktop menu or compact account sheet. */
 async function signOutVia(page: Page, id: AccountId): Promise<void> {
   await account(page, id).click()
-  await page.getByRole("menuitem", { name: "Sign out" }).click()
+  await page
+    .getByRole("menuitem", { name: "Sign out", exact: true })
+    .or(
+      page.getByRole("dialog", { name: "Account", exact: true }).getByRole("button", { name: "Sign out", exact: true })
+    )
+    .click()
   await expect(page.getByTestId("login-email-input")).toBeVisible()
 }
 
@@ -149,14 +161,21 @@ async function setExpiry(nurseId: AccountId, date: string): Promise<void> {
     .promise((e) => new Error(e.message))
 }
 
-/** `days` from the facility's today, as `YYYY-MM-DD`. Negative is the past. */
+/** `days` from UTC today, as `YYYY-MM-DD`. Negative is the past. */
 function relativeDate(days: number): string {
-  return facilityToday().addDays(days).pretty()
+  return DateOnly.todayUTC().addDays(days).pretty()
 }
 
 /** One seeded shift as `GET /api/shifts` returns it before any change, projected from `SAMPLE.shifts`. */
 function seededShift(id: (typeof SAMPLE.shifts)[number]["id"]): Shift {
   const x = SAMPLE.shifts.find((shift) => shift.id === id)
   if (x === undefined) throw new Error(`${id} is not a seeded shift`) // programmer error: the type already rules it out
-  return { ...x, agencyName: ACCOUNTS[x.agencyId].name, status: x.claimedBy === null ? "open" : "filled" }
+  return {
+    ...x,
+    id: new Id<"Shift">(x.id),
+    agencyId: new Id<"User">(x.agencyId),
+    claimedBy: x.claimedBy === null ? null : new Id<"User">(x.claimedBy),
+    agencyName: ACCOUNTS[x.agencyId].name,
+    status: x.claimedBy === null ? "open" : "filled",
+  }
 }

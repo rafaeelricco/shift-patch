@@ -1,7 +1,8 @@
 import * as s from "@lib/json/schema"
 import { api } from "@api/endpoints"
+import { db, sql } from "@lib/db"
 
-import { test, expect, ACCOUNTS, PASSWORD, signInAs, decoded } from "../fixtures"
+import { notification, test, expect, ACCOUNTS, PASSWORD, signInAs, decoded } from "../fixtures"
 
 const ERROR = s.object({ error: s.string })
 const keys = async (res: { json: () => Promise<unknown> }) => {
@@ -76,6 +77,46 @@ test.describe("POST /api/auth/login", () => {
     expect(other.status()).toBe(200)
   })
 
+  test("valid login attempts expire old failures across pairs without clearing recent throttles", async ({
+    request,
+  }) => {
+    await db
+      .execute(
+        sql`INSERT INTO login_failures (email, address, at) VALUES
+      ('inactive@example.com', 'old-address', now() - interval '16 minutes'),
+      ('another@example.com', 'different-address', now() - interval '1 day'),
+      ('recent@example.com', 'recent-address', now() - interval '1 minute')`
+      )
+      .promise((e) => new Error(e.message))
+    await db
+      .execute(
+        sql`INSERT INTO login_failures (email, address)
+      SELECT ${ACCOUNTS["nurse-2"].email}, 'retention-test' FROM generate_series(1, 20)`
+      )
+      .promise((e) => new Error(e.message))
+
+    const login = await request.post("/api/auth/login", {
+      data: { email: ACCOUNTS["nurse-1"].email, password: PASSWORD },
+    })
+    expect(login.status()).toBe(200)
+    const remaining = await db
+      .rows(
+        sql`SELECT email, address, count(*)::int AS n FROM login_failures GROUP BY email, address ORDER BY email`,
+        s.object({ email: s.string, address: s.string, n: s.number })
+      )
+      .promise((e) => new Error(e.message))
+    expect(remaining).toEqual([
+      { email: ACCOUNTS["nurse-2"].email, address: "retention-test", n: 20 },
+      { email: "recent@example.com", address: "recent-address", n: 1 },
+    ])
+    const blocked = await request.post("/api/auth/login", {
+      headers: { "x-real-ip": "retention-test" },
+      data: { email: ACCOUNTS["nurse-2"].email, password: PASSWORD },
+    })
+    expect(blocked.status()).toBe(429)
+    expect(await decoded(blocked, ERROR)).toEqual({ error: "Too many failed attempts, try again later" })
+  })
+
   test("NFR-2 the reply never contains a password hash", async ({ request }) => {
     const res = await request.post("/api/auth/login", {
       data: { email: ACCOUNTS["admin-1"].email, password: PASSWORD },
@@ -99,7 +140,7 @@ test.describe("login form", () => {
     await page.getByTestId("login-email-input").fill(ACCOUNTS["nurse-1"].email)
     await page.getByTestId("login-password-input").fill("wrong")
     await page.getByTestId("login-submit-button").click()
-    await expect(page.getByTestId("notification-banner")).toHaveText("Invalid email or password")
+    await expect(notification(page).locator("[data-title]")).toHaveText("Invalid email or password")
     await expect(page.getByTestId("login-email-input")).toHaveValue(ACCOUNTS["nurse-1"].email)
     await expect(page.getByTestId("login-password-input")).toHaveValue("")
   })
@@ -107,7 +148,7 @@ test.describe("login form", () => {
   test("canvas A1: submitting empty fields reaches the server and shows the same 401 banner", async ({ page }) => {
     await page.goto("/")
     await page.getByTestId("login-submit-button").click()
-    await expect(page.getByTestId("notification-banner")).toHaveText("Invalid email or password")
+    await expect(notification(page).locator("[data-title]")).toHaveText("Invalid email or password")
   })
 
   test("canvas sign-in card: Welcome back, placeholders and the show or hide toggle", async ({ page }) => {
@@ -121,7 +162,7 @@ test.describe("login form", () => {
     await expect(password).toHaveAttribute("type", "text")
     await page.getByRole("button", { name: "Hide password" }).click()
     await expect(password).toHaveAttribute("type", "password")
-    await expect(page.getByText("Demo with sample data only.")).toBeVisible()
+    await expect(page.getByText("Enter your email and password.")).toBeVisible()
   })
 
   test("canvas A2: a network failure reads Couldn't sign in, try again and keeps the email", async ({ page }) => {
@@ -130,7 +171,7 @@ test.describe("login form", () => {
     await page.getByTestId("login-email-input").fill(ACCOUNTS["nurse-1"].email)
     await page.getByTestId("login-password-input").fill(PASSWORD)
     await page.getByTestId("login-submit-button").click()
-    await expect(page.getByTestId("notification-banner")).toHaveText("Couldn't sign in, try again")
+    await expect(notification(page).locator("[data-title]")).toHaveText("Couldn't sign in, try again")
     await expect(page.getByTestId("login-email-input")).toHaveValue(ACCOUNTS["nurse-1"].email)
   })
 
@@ -142,7 +183,7 @@ test.describe("login form", () => {
     await page.getByTestId("login-email-input").fill(ACCOUNTS["nurse-2"].email)
     await page.getByTestId("login-password-input").fill(PASSWORD)
     await page.getByTestId("login-submit-button").click()
-    await expect(page.getByTestId("notification-banner")).toHaveText("Too many failed attempts, try again later")
+    await expect(notification(page).locator("[data-title]")).toHaveText("Too many failed attempts, try again later")
   })
 
   for (const id of ["nurse-1", "agency-a", "admin-1"] as const) {

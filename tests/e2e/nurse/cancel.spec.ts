@@ -1,10 +1,12 @@
 import type { APIRequestContext, Dialog, Page } from "@playwright/test"
 
+import { Id } from "@lib/id"
 import * as s from "@lib/json/schema"
 import { api, type Shift } from "@api/endpoints"
 import { resetToSeed } from "@lib/seed"
 
 import {
+  notification,
   test,
   expect,
   signInAs,
@@ -28,7 +30,7 @@ const INVALID_REASON = { error: "Reason must be no-show or advance" }
 
 const open = (page: Page) => page.getByRole("region", { name: "Open shifts" })
 const mine = (page: Page) => page.getByRole("region", { name: "Your shifts" })
-const banner = (page: Page) => page.getByTestId("notification-banner")
+const banner = (page: Page) => notification(page)
 const openCard = (page: Page, date: string) => open(page).getByTestId("shift-list-item").filter({ hasText: date })
 const mineCard = (page: Page, date: string) => mine(page).locator("article").filter({ hasText: date })
 
@@ -49,12 +51,12 @@ async function shifts(request: APIRequestContext, id: AccountId): Promise<Readon
 }
 
 async function shiftIn(request: APIRequestContext, id: AccountId, shiftId: string): Promise<Shift | undefined> {
-  return (await shifts(request, id)).find((x) => x.id === shiftId)
+  return (await shifts(request, id)).find((x) => x.id.value === shiftId)
 }
 
 async function expectBanner(page: Page, text: string): Promise<void> {
   await expect(banner(page)).toHaveCount(1)
-  await expect(banner(page)).toHaveText(text)
+  await expect(banner(page).locator("[data-title]")).toHaveText(text)
 }
 
 const reopened = { ...seededShift("shift-2"), status: "open", claimedBy: null }
@@ -69,7 +71,7 @@ test("FR-6.1 the assigned nurse cancels and gets the open shift plus cancellatio
   expect(await keys(res)).toEqual([...SHIFT_KEYS, "cancellation"].sort())
   expect(await decoded(res, api.cancelShift.response)).toEqual({
     ...reopened,
-    cancellation: { reason: "advance", previousNurseId: "nurse-1" },
+    cancellation: { reason: "advance", previousNurseId: new Id<"User">("nurse-1") },
   })
   expect(await shiftIn(request, "admin-1", "shift-2")).toEqual(reopened)
   expect(await auditLog.entries("shift-2")).toEqual([
@@ -187,7 +189,7 @@ test("FR-6.5 a cancelled shift can be claimed again", async ({ request }) => {
   expect(await decoded(res, api.claimShift.response)).toEqual({
     ...seededShift("shift-2"),
     status: "filled",
-    claimedBy: "nurse-1",
+    claimedBy: new Id<"User">("nurse-1"),
   })
 })
 
@@ -286,12 +288,12 @@ test("FR-6.7 a network failure shows a retry line and keeps the card", async ({ 
 test("FR-6.9 a cancelled shift reads open everywhere and cancelled is never a status", async ({ page, request }) => {
   expect((await cancel(request, "nurse-1", "shift-2", { reason: "advance" })).status()).toBe(200)
   for (const id of ["nurse-1", "nurse-2", "agency-a", "agency-b", "admin-1"] as const) {
-    for (const x of await shifts(request, id)) expect(["open", "filled"], `${id} ${x.id}`).toContain(x.status)
+    for (const x of await shifts(request, id)) expect(["open", "filled"], `${id} ${x.id.value}`).toContain(x.status)
   }
   await signInAs(page, "nurse-1")
   await expect(openCard(page, "2026-10-03").getByText("open", { exact: true })).toBeVisible()
   await expect(page.getByText("cancelled", { exact: true })).toHaveCount(0)
   const res = await request.get("/api/timesheet", authed(await apiToken(request, "admin-1")))
   expect(res.status()).toBe(200)
-  expect((await decoded(res, api.timesheet.response)).rows.map((r) => r.shiftId)).not.toContain("shift-2")
+  expect((await decoded(res, api.timesheet.response)).rows.map((r) => r.shiftId.value)).not.toContain("shift-2")
 })

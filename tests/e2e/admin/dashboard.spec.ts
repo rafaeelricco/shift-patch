@@ -70,8 +70,8 @@ test("FR-5.1 GET /api/admin/shifts carries the shift keys plus nurseName", async
   expect(raw.shifts).toHaveLength(3)
   for (const shift of raw.shifts) expect(keysOf(shift)).toEqual([...SHIFT_KEYS, "nurseName"].sort())
   const shifts = await adminShifts(request)
-  expect(shifts.find((x) => x.id === "shift-2")?.nurseName).toBe("Maria Lopez")
-  expect(shifts.find((x) => x.id === "shift-1")?.nurseName).toBeNull()
+  expect(shifts.find((x) => x.id.value === "shift-2")?.nurseName).toBe("Maria Lopez")
+  expect(shifts.find((x) => x.id.value === "shift-1")?.nurseName).toBeNull()
 })
 
 test("FR-5.2 each row's admin-shift-status-badge shows the API status", async ({ page, request }) => {

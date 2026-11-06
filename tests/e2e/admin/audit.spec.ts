@@ -1,6 +1,7 @@
 import type { APIRequestContext, Page } from "@playwright/test"
 
 import { api } from "@api/endpoints"
+import { Id } from "@lib/id"
 
 import { test, expect, signInAs, apiToken, authed, decoded, setExpiry, relativeDate, type AccountId } from "../fixtures"
 
@@ -56,12 +57,12 @@ test("FR-8.1 GET /api/admin/audit lists entries newest first with names resolved
   await post(request, "nurse-1", "/api/shifts/shift-1/cancel", { reason: "advance" })
   const list = await entries(request)
   expect(list[0]).toMatchObject({
-    actorId: "nurse-1",
+    actorId: new Id<"User">("nurse-1"),
     actorName: "Maria Lopez",
     action: "shift.cancelled",
     recordId: "shift-1",
     reason: "advance",
-    previousNurseId: "nurse-1",
+    previousNurseId: new Id<"User">("nurse-1"),
     previousNurseName: "Maria Lopez",
   })
   expect(list[1]).toMatchObject({

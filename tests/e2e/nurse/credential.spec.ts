@@ -6,7 +6,18 @@ import { db, sql, type Sql } from "@lib/db"
 import { resetToSeed } from "@lib/seed"
 import { Future } from "@lib/future"
 
-import { test, expect, signInAs, signOutVia, apiToken, authed, decoded, setExpiry, relativeDate } from "../fixtures"
+import {
+  notification,
+  test,
+  expect,
+  signInAs,
+  signOutVia,
+  apiToken,
+  authed,
+  decoded,
+  setExpiry,
+  relativeDate,
+} from "../fixtures"
 
 const ERROR = s.object({ error: s.string })
 const keys = async (res: { json: () => Promise<unknown> }) => {
@@ -56,7 +67,7 @@ const me = async (request: APIRequestContext, token: string) => {
 const documentOf = (request: APIRequestContext, id: string, token?: string) =>
   request.get(`/api/credentials/uploads/${encodeURIComponent(id)}/document`, token === undefined ? {} : authed(token))
 
-const banner = (page: Page) => page.getByTestId("notification-banner")
+const banner = (page: Page) => notification(page)
 const panel = (page: Page) => page.getByRole("region", { name: "Credential", exact: true })
 const current = (page: Page) => panel(page).getByRole("region", { name: "Current credential" })
 const renewal = (page: Page) => panel(page).getByRole("region", { name: "Renewal", exact: true })
@@ -91,7 +102,7 @@ test("FR-7.1 James uploads a PDF with an expiry date and sees Credential submitt
   await chooseFile(page, "licence.pdf", "application/pdf", PDF)
   await dateInput(page).fill(future)
   await submit(page).click()
-  await expect(banner(page)).toHaveText("Credential submitted for review")
+  await expect(banner(page).locator("[data-title]")).toHaveText("Credential submitted for review")
   await expect(banner(page)).toHaveCount(1)
 
   const check = async () => {
@@ -113,7 +124,11 @@ test("FR-7.1 James uploads a PDF with an expiry date and sees Credential submitt
 
   const entries = (await auditLog.entries()).filter((e) => e.action === "credential.uploaded")
   expect(entries).toHaveLength(1)
-  expect(entries[0]).toMatchObject({ actor_id: "nurse-2", record_id: summary.latest?.id, previous_nurse_id: null })
+  expect(entries[0]).toMatchObject({
+    actor_id: "nurse-2",
+    record_id: summary.latest?.id.value,
+    previous_nurse_id: null,
+  })
 })
 
 test("FR-7.1 the form tells users not to upload real documents", async ({ page }) => {
@@ -135,7 +150,7 @@ test("FR-7.2 PDF, PNG and JPEG are accepted, and the stored type comes from the 
   const res = await uploadApi(request, token, { bytes: PNG, type: "application/pdf", name: "d.pdf", expiry: future })
   expect(res.status()).toBe(201)
   const summary = await decoded(res, api.uploadCredential.response)
-  const id = summary.latest?.id ?? ""
+  const id = summary.latest?.id.value ?? ""
   const doc = await documentOf(request, id, token)
   expect(doc.status()).toBe(200)
   expect(doc.headers()["content-type"]).toBe("image/png")
@@ -163,7 +178,7 @@ test("FR-7.2 content that is not PDF, PNG or JPEG is 415 { error: 'File must be 
   await chooseFile(page, "x.pdf", "application/pdf", TEXT)
   await dateInput(page).fill(future)
   await submit(page).click()
-  await expect(banner(page)).toHaveText("File must be a PDF, PNG or JPEG")
+  await expect(banner(page).locator("[data-title]")).toHaveText("File must be a PDF, PNG or JPEG")
   await expect(banner(page)).toHaveCount(1)
 })
 
@@ -195,7 +210,8 @@ test("FR-7.2 over 4 MB is 413 { error: 'File must be 4 MB or smaller' } and exac
   await dateInput(page).fill(future)
   await submit(page).click()
   await expect(panel(page).getByText("File must be 4 MB or smaller")).toBeVisible()
-  await expect(banner(page)).toHaveCount(0)
+  await expect(banner(page)).toHaveCount(1)
+  await expect(banner(page).locator("[data-title]")).toHaveText("File must be 4 MB or smaller")
   expect(sent.n).toBe(0)
 })
 
@@ -216,7 +232,8 @@ test("FR-7.2 an empty body is 400 { error: 'Choose a document to upload' }", asy
   await dateInput(page).fill(future)
   await submit(page).click()
   await expect(panel(page).getByText("Choose a document to upload")).toBeVisible()
-  await expect(banner(page)).toHaveCount(0)
+  await expect(banner(page)).toHaveCount(1)
+  await expect(banner(page).locator("[data-title]")).toHaveText("Choose a document to upload")
   expect(sent.n).toBe(0)
 })
 
@@ -226,7 +243,7 @@ test("FR-7.3 a past expiry date is rejected in the banner", async ({ page, reque
   await chooseFile(page, "licence.pdf", "application/pdf", PDF)
   await dateInput(page).fill(past)
   await submit(page).click()
-  await expect(banner(page)).toHaveText("Expiry date is in the past")
+  await expect(banner(page).locator("[data-title]")).toHaveText("Expiry date is in the past")
   await expect(banner(page)).toHaveCount(1)
 
   const token = await apiToken(request, "nurse-2")
@@ -263,7 +280,7 @@ test("FR-7.3 a missing or malformed expiry date is 400", async ({ page, request 
   await signInAs(page, "nurse-2")
   await chooseFile(page, "licence.pdf", "application/pdf", PDF)
   await submit(page).click()
-  await expect(banner(page)).toHaveText("Enter an expiry date")
+  await expect(banner(page).locator("[data-title]")).toHaveText("Enter an expiry date")
   await expect(banner(page)).toHaveCount(1)
 })
 
@@ -282,7 +299,7 @@ test("FR-7.4 a pending upload does not change eligibility", async ({ page, reque
     .filter({ hasText: "2026-10-02" })
     .getByRole("button", { name: "Claim shift" })
     .click()
-  await expect(banner(page)).toHaveText("Credential expired, cannot claim shift")
+  await expect(banner(page).locator("[data-title]")).toHaveText("Credential expired, cannot claim shift")
   await expect(banner(page)).toHaveCount(1)
 
   expect(await approvedExpiry("nurse-2")).toBe("2026-06-01")
@@ -337,7 +354,7 @@ test("FR-7.5 the latest upload shows approved or rejected after review", async (
   for (const status of ["rejected", "approved"] as const) {
     const up = await uploadApi(request, token, { bytes: PDF, type: "application/pdf", name: "a.pdf", expiry: future })
     expect(up.status()).toBe(201)
-    const id = (await decoded(up, api.uploadCredential.response)).latest?.id ?? ""
+    const id = (await decoded(up, api.uploadCredential.response)).latest?.id.value ?? ""
     // The review itself is an Admin-phase route; set its outcome directly.
     await run(db.execute(sql`UPDATE credential_uploads SET status = ${status} WHERE id = ${id}`))
     await page.reload()
@@ -353,7 +370,7 @@ test("FR-7.5 a new upload replaces the pending one and its document", async ({ p
   const later = relativeDate(200)
   const a = await uploadApi(request, token, { bytes: PDF, type: "application/pdf", name: "a.pdf", expiry: future })
   expect(a.status()).toBe(201)
-  const aId = (await decoded(a, api.uploadCredential.response)).latest?.id ?? ""
+  const aId = (await decoded(a, api.uploadCredential.response)).latest?.id.value ?? ""
   const b = await uploadApi(request, token, { bytes: PNG, type: "image/png", name: "b.png", expiry: later })
   expect(b.status()).toBe(201)
 
@@ -380,7 +397,7 @@ test("FR-7.5 a network failure keeps the chosen file and date", async ({ page })
   await chooseFile(page, "licence.pdf", "application/pdf", PDF)
   await dateInput(page).fill(future)
   await submit(page).click()
-  await expect(banner(page)).toHaveText("Couldn't upload document, try again")
+  await expect(banner(page).locator("[data-title]")).toHaveText("Couldn't upload document, try again")
   await expect(banner(page)).toHaveCount(1)
   await expect(dateInput(page)).toHaveValue(future)
   expect(await fileInput(page).evaluate((el: HTMLInputElement) => el.files?.[0]?.name ?? null)).toBe("licence.pdf")
@@ -391,14 +408,14 @@ test("FR-7.5 a network failure keeps the chosen file and date", async ({ page })
   )
   await submit(page).click()
   expect((await reply).status()).toBe(201)
-  await expect(banner(page)).toHaveText("Credential submitted for review")
+  await expect(banner(page).locator("[data-title]")).toHaveText("Credential submitted for review")
 })
 
 test("FR-7.7 only the uploader and the admin can retrieve a document", async ({ request }) => {
   const james = await apiToken(request, "nurse-2")
   const up = await uploadApi(request, james, { bytes: PDF, type: "application/pdf", name: "a.pdf", expiry: future })
   expect(up.status()).toBe(201)
-  const id = (await decoded(up, api.uploadCredential.response)).latest?.id ?? ""
+  const id = (await decoded(up, api.uploadCredential.response)).latest?.id.value ?? ""
 
   for (const who of ["nurse-2", "admin-1"] as const) {
     const res = await documentOf(request, id, who === "nurse-2" ? james : await apiToken(request, who))
@@ -432,7 +449,7 @@ test("FR-7.7 a document is never publicly reachable", async ({ request }) => {
   const token = await apiToken(request, "nurse-2")
   const up = await uploadApi(request, token, { bytes: PDF, type: "application/pdf", name: "a.pdf", expiry: future })
   expect(up.status()).toBe(201)
-  const id = (await decoded(up, api.uploadCredential.response)).latest?.id ?? ""
+  const id = (await decoded(up, api.uploadCredential.response)).latest?.id.value ?? ""
 
   expect((await request.get(`/${id}`)).status()).toBe(404)
   expect((await request.get(`/uploads/${id}`)).status()).toBe(404)
@@ -443,7 +460,7 @@ test("FR-10.1 resetToSeed removes every credential upload", async ({ request }) 
   const token = await apiToken(request, "nurse-2")
   const up = await uploadApi(request, token, { bytes: PDF, type: "application/pdf", name: "a.pdf", expiry: future })
   expect(up.status()).toBe(201)
-  const id = (await decoded(up, api.uploadCredential.response)).latest?.id ?? ""
+  const id = (await decoded(up, api.uploadCredential.response)).latest?.id.value ?? ""
 
   await run(resetToSeed())
   const after = await apiToken(request, "nurse-2")

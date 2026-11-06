@@ -5,6 +5,7 @@ import { api } from "@api/endpoints"
 import { SAMPLE } from "@lib/db"
 
 import {
+  notification,
   test,
   expect,
   ACCOUNTS,
@@ -25,7 +26,7 @@ const keysOf = (x: unknown): ReadonlyArray<string> =>
 
 const open = (page: Page) => page.getByRole("region", { name: "Open shifts" })
 const mine = (page: Page) => page.getByRole("region", { name: "Your shifts" })
-const banner = (page: Page) => page.getByTestId("notification-banner")
+const banner = (page: Page) => notification(page)
 
 test.beforeEach(async () => {
   await setExpiry("nurse-1", relativeDate(365))
@@ -55,7 +56,7 @@ test("FR-3.1 filled and other-agency shifts are listed too", async ({ request })
   const res = await request.get("/api/shifts", authed(await apiToken(request, "nurse-2")))
   const { shifts } = await decoded(res, api.listShifts.response)
   expect(shifts).toHaveLength(3)
-  const shift3 = shifts.find((x) => x.id === "shift-3")
+  const shift3 = shifts.find((x) => x.id.value === "shift-3")
   expect(shift3?.status).toBe("filled")
   expect(shift3?.agencyName).toBe(ACCOUNTS["agency-b"].name)
   expect(shift3?.agencyName).toBe("Metro Care Partners")

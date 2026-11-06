@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 
 const ADMIN = { id: "admin-1", name: "Alex Kim", role: "admin" }
 const QUEUE = "/api/admin/credentials"
@@ -11,6 +11,9 @@ const UPLOAD = {
   fileName: "sample-renewal.pdf",
 }
 const REVIEW = `${QUEUE}/${UPLOAD.id}/review`
+const notifications = () =>
+  screen.queryAllByTestId("notification-banner").filter((node) => node.dataset["removed"] === "false")
+
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status })
 const region = () => within(screen.getByRole("region", { name: "Credential review" }))
 
@@ -27,8 +30,14 @@ async function visit(reply: (path: string, init?: RequestInit) => Promise<Respon
   vi.stubGlobal("fetch", fetchMock)
   vi.resetModules()
   const { default: Page } = await import("@/app/page")
+  const { Toaster } = await import("@ui/sonner")
   await act(async () => {
-    render(<Page />)
+    render(
+      <>
+        <Page />
+        <Toaster />
+      </>
+    )
   })
   return fetchMock
 }
@@ -69,6 +78,7 @@ it("lists the oldest submission first and links to its protected document", asyn
 
   const rows = region().getAllByRole("row")
   expect(rows[1]?.textContent).toContain("James Cook")
+  expect(rows[1]?.textContent).toContain("2027-01-15 08:00")
   expect(rows[2]?.textContent).toContain("Maria Lopez")
   expect(region().getAllByText(UPLOAD.expiresOn)).toHaveLength(2)
   const link = region().getByRole("link", { name: "View document for James Cook" })
@@ -126,8 +136,8 @@ it.each([
     expect(region().queryByText(UPLOAD.fileName)).toBeNull()
     expect(region().getByText("No credentials to review")).toBeTruthy()
     expect(region().getByText(/Couldn't refresh, showing/)).toBeTruthy()
-    expect(screen.getAllByTestId("notification-banner")).toHaveLength(1)
-    expect(screen.getByTestId("notification-banner").textContent).toBe(message)
+    await waitFor(() => expect(notifications()).toHaveLength(1))
+    await waitFor(() => expect(notifications()[0]?.textContent).toBe(message))
   }
 )
 
@@ -146,8 +156,8 @@ it.each([
   })
   expect(reads).toBe(2)
   expect(region().getByText("No credentials to review")).toBeTruthy()
-  expect(screen.getAllByTestId("notification-banner")).toHaveLength(1)
-  expect(screen.getByTestId("notification-banner").textContent).toBe(error)
+  await waitFor(() => expect(notifications()).toHaveLength(1))
+  await waitFor(() => expect(notifications()[0]?.textContent).toBe(error))
 })
 
 it("keeps an unreviewed upload and re-enables both decisions after a server error", async () => {
@@ -166,7 +176,7 @@ it("keeps an unreviewed upload and re-enables both decisions after a server erro
   await act(async () => {
     fireEvent.click(region().getByRole("button", { name: "Approve credential for James Cook" }))
   })
-  expect(screen.getByTestId("notification-banner").textContent).toBe("Couldn't review credential, try again")
+  await waitFor(() => expect(notifications()[0]?.textContent).toBe("Couldn't review credential, try again"))
   expect(region().getByText(UPLOAD.fileName)).toBeTruthy()
   expect(region().getByRole<HTMLButtonElement>("button", { name: "Approve credential for James Cook" }).disabled).toBe(
     false
@@ -179,7 +189,7 @@ it("keeps an unreviewed upload and re-enables both decisions after a server erro
     fireEvent.click(region().getByRole("button", { name: "Reject credential for James Cook" }))
   })
   expect(attempts).toBe(2)
-  expect(screen.getByTestId("notification-banner").textContent).toBe("Credential rejected")
+  await waitFor(() => expect(notifications()[0]?.textContent).toBe("Credential rejected"))
   expect(region().getByText("No credentials to review")).toBeTruthy()
 })
 

@@ -1,10 +1,12 @@
 import type { APIRequestContext, Page, Route } from "@playwright/test"
 
+import { Id } from "@lib/id"
 import * as s from "@lib/json/schema"
 import { api, type Shift } from "@api/endpoints"
-import { facilityToday } from "@lib/facility"
+import { DateOnly } from "@lib/time"
 
 import {
+  notification,
   test,
   expect,
   signInAs,
@@ -28,7 +30,7 @@ const EXPIRED = { error: "Credential expired, cannot claim shift" }
 
 const open = (page: Page) => page.getByRole("region", { name: "Open shifts" })
 const mine = (page: Page) => page.getByRole("region", { name: "Your shifts" })
-const banner = (page: Page) => page.getByTestId("notification-banner")
+const banner = (page: Page) => notification(page)
 const card = (page: Page, date: string) => open(page).getByTestId("shift-list-item").filter({ hasText: date })
 
 const claim = async (request: APIRequestContext, id: AccountId | null, shiftId: string) =>
@@ -41,12 +43,12 @@ async function shifts(request: APIRequestContext, id: AccountId): Promise<Readon
 }
 
 async function shiftIn(request: APIRequestContext, id: AccountId, shiftId: string): Promise<Shift | undefined> {
-  return (await shifts(request, id)).find((x) => x.id === shiftId)
+  return (await shifts(request, id)).find((x) => x.id.value === shiftId)
 }
 
 async function expectBanner(page: Page, text: string): Promise<void> {
   await expect(banner(page)).toHaveCount(1)
-  await expect(banner(page)).toHaveText(text)
+  await expect(banner(page).locator("[data-title]")).toHaveText(text)
 }
 
 /** Serves `GET /api/shifts` rewritten by `edit` until the first claim request goes out. */
@@ -71,7 +73,7 @@ test("FR-3.3 an eligible nurse claims with an empty body and gets the filled shi
   const res = await claim(request, "nurse-1", "shift-1")
   expect(res.status()).toBe(200)
   expect(await keys(res)).toEqual([...SHIFT_KEYS].sort())
-  const filled = { ...seededShift("shift-1"), status: "filled", claimedBy: "nurse-1" }
+  const filled = { ...seededShift("shift-1"), status: "filled", claimedBy: new Id<"User">("nurse-1") }
   expect(await decoded(res, api.claimShift.response)).toEqual(filled)
   expect(await shiftIn(request, "agency-a", "shift-1")).toEqual(filled)
   expect(await shiftIn(request, "admin-1", "shift-1")).toEqual(filled)
@@ -140,7 +142,7 @@ test("FR-3.5 simultaneous claims: exactly one 200, the rest 409", async ({ reque
     expect(lost, id).toHaveLength(5)
     for (const r of lost) expect(await decoded(r.res, ERROR)).toEqual({ error: "Shift already filled" })
     const winner = won[0]?.nurse
-    expect((await shiftIn(request, "admin-1", id))?.claimedBy).toBe(winner)
+    expect((await shiftIn(request, "admin-1", id))?.claimedBy?.value).toBe(winner)
     const entries = await auditLog.entries(id)
     expect(entries.filter((e) => e.action === "shift.claimed")).toEqual([
       { action: "shift.claimed", actor_id: winner, record_id: id, reason: null, previous_nurse_id: null },
@@ -179,7 +181,7 @@ test("FR-3.6 a UI claim shows Shift claimed and moves the card to Your shifts wi
 
   const shift = await shiftIn(request, "admin-1", "shift-1")
   expect(shift?.status).toBe("filled")
-  expect(shift?.claimedBy).toBe("nurse-1")
+  expect(shift?.claimedBy?.value).toBe("nurse-1")
 })
 
 test("FR-3.6 a double click sends one claim request", async ({ page }) => {
@@ -195,7 +197,7 @@ test("FR-3.6 a double click sends one claim request", async ({ page }) => {
 
 test("FR-3.6 a lost race shows Shift already filled and the list corrects itself", async ({ page }) => {
   await rewriteListUntilClaim(page, (xs) =>
-    xs.map((x) => (x.id === "shift-2" ? { ...x, status: "open", claimedBy: null } : x))
+    xs.map((x) => (x.id.value === "shift-2" ? { ...x, status: "open", claimedBy: null } : x))
   )
   await signInAs(page, "nurse-1")
   await card(page, "2026-10-03").getByTestId("shift-claim-button").click()
@@ -204,7 +206,7 @@ test("FR-3.6 a lost race shows Shift already filled and the list corrects itself
 })
 
 test("FR-3.6 a removed shift shows Shift not found and the list re-reads", async ({ page }) => {
-  const ghost: Shift = { ...seededShift("shift-1"), id: "shift-9999", date: "2026-10-05" }
+  const ghost: Shift = { ...seededShift("shift-1"), id: new Id<"Shift">("shift-9999"), date: "2026-10-05" }
   await rewriteListUntilClaim(page, (xs) => [...xs, ghost])
   await signInAs(page, "nurse-1")
   await card(page, "2026-10-05").getByTestId("shift-claim-button").click()
@@ -275,7 +277,7 @@ test("FR-4.2 James's claim button stays visible and enabled and the banner shows
   await expect(target).toHaveCount(1)
   const renewal = page.getByRole("button", { name: "Upload renewal" })
   await expect(renewal).toBeVisible()
-  await expect(banner(page).getByRole("button", { name: "Upload renewal" })).toHaveCount(0)
+  await expect(banner(page).getByRole("button", { name: "Upload renewal" })).toHaveCount(1)
   await page.getByRole("button", { name: "Upload a renewal", exact: true }).click()
   await expect(page.getByTestId("credential-upload-input")).toBeHidden()
   await renewal.click()
@@ -367,7 +369,7 @@ test("FR-4.4 an overnight shift ending on the expiry date can be claimed", async
 })
 
 test("FR-4.5 nurse-1 can claim the seeded shift-1 although its date has passed", async ({ request }) => {
-  test.skip(facilityToday().pretty() > "2027-01-01", "Maria's seeded credential (2027-01-01) has lapsed")
+  test.skip(DateOnly.todayUTC().pretty() > "2027-01-01", "Maria's seeded credential (2027-01-01) has lapsed")
   await setExpiry("nurse-1", "2027-01-01")
   const res = await claim(request, "nurse-1", "shift-1")
   expect(res.status()).toBe(200)

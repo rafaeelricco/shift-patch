@@ -52,7 +52,7 @@ test("desktop sidebar does not animate when reduced motion is enabled", async ({
   await expect(sidebar).toHaveCSS("width", "288px")
 })
 
-test("at phone width the sidebar is hidden and the header account menu signs out", async ({ page }) => {
+test("at phone width the sidebar is hidden and the header account sheet signs out", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await signInAs(page, "nurse-1")
   await expect(page.getByRole("complementary", { name: "Sidebar" })).toBeHidden()
