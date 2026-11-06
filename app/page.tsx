@@ -1633,7 +1633,7 @@ function CredentialForm({
 
 const SHIFT_ROLES = ["RN", "LPN"] as const
 const CANCEL_REASONS = [
-  { value: "advance", label: "Cancelled in advance", hint: "Same as Cancel shift. Reopens it for nurses" },
+  { value: "advance", label: "Cancelled in advance", hint: "Same as holding the button. Reopens it for nurses" },
   { value: "no-show", label: "No-show", hint: "The nurse didn't arrive. Reopens it for nurses" },
 ] as const satisfies ReadonlyArray<{ value: CancelReason; label: string; hint: string }>
 
@@ -1678,7 +1678,7 @@ function AgencyScreen({ user }: { user: User }) {
     })
     focusLater('[data-testid="agency-post-shift-button"]')
   }
-  // FR-6.7 and FR-6.8: one click cancels in advance; the menu beside it records a no-show. No confirmation step.
+  // FR-6.7 and FR-6.8: holding cancels in advance; the menu beside it chooses a reason.
   const cancel = (shift: Shift, reason: CancelReason): void =>
     run(`cancel:${shift.id.value}`, () => {
       feedback.clear()
@@ -1858,8 +1858,8 @@ function AgencyShifts({
 }
 
 /**
- * Design AgencyCancelPattern: Cancel shift cancels in advance in one click (FR-6.8's default). The chevron opens the
- * reasons, and each one cancels straight away, so nothing hides in a preselected value.
+ * Design AgencyCancelPattern: holding cancels in advance (FR-6.8's default). The chevron opens the reasons,
+ * and each menu choice cancels immediately.
  */
 function CancelWithReason({
   shift,
@@ -1870,16 +1870,15 @@ function CancelWithReason({
 }) {
   return (
     <>
-      <Button
+      <HoldButton
         variant="outline-danger"
         size="sm"
         data-testid="shift-cancel-button"
-        aria-label={`Cancel shift: ${shift.role}, ${shift.date}, ${timesLabel(shift)}. Reason, cancelled in advance`}
-        // A double click's second press is not a second cancel.
-        onClick={(event) => (event.detail > 1 ? undefined : onCancel(shift, "advance"))}
+        aria-label={`Hold to cancel shift: ${shift.role}, ${shift.date}, ${timesLabel(shift)}. Reason, cancelled in advance`}
+        onHold={() => onCancel(shift, "advance")}
       >
-        Cancel shift
-      </Button>
+        Hold to cancel
+      </HoldButton>
       <DropdownMenu>
         <DropdownMenuTrigger
           render={<Button variant="ghost-primary" size="icon-sm" aria-label="Choose a cancellation reason" />}
