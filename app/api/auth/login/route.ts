@@ -89,7 +89,7 @@ export async function POST(request: Request): Promise<Response> {
                     .mapRej(internal)
                     .chain((token) =>
                       withLoginAttempt(key, address, (tx) =>
-                        startSession(tx, request, account.id).map((cookie) =>
+                        startSession(tx, request, account.id, token).map((cookie) =>
                           json(200, s.encode(api.login.response, { token, user }), { "Set-Cookie": cookie })
                         )
                       )

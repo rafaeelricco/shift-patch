@@ -73,9 +73,10 @@ test("FR-1.4 a malformed Authorization header is 401", async ({ request }) => {
   }
 })
 
-test("FR-1.4 a hand-minted token with the test secret is accepted", async ({ request }) => {
+test("FR-1.4 a correctly signed token without a login session is rejected", async ({ request }) => {
   const res = await request.get("/api/shifts", authed(hs256(maria(), secret())))
-  expect(res.status()).toBe(200)
+  await expect401(res)
+  expect(await decoded(res, ERROR)).toEqual(EXPIRED)
 })
 
 test("FR-1.4 a token signed with another key, an expired token and an alg none token are each 401", async ({

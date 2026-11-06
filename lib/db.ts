@@ -219,6 +219,13 @@ const MIGRATIONS: ReadonlyArray<{
     version: 2,
     statements: [sql`CREATE INDEX IF NOT EXISTS login_failures_at ON login_failures (at)`],
   },
+  {
+    version: 3,
+    statements: [
+      sql`ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS bearer_hash text`,
+      sql`CREATE UNIQUE INDEX IF NOT EXISTS auth_sessions_bearer_hash ON auth_sessions (bearer_hash)`,
+    ],
+  },
 ]
 
 // The technical spec's sample data, exactly (FR-11.1). The password is the published sample one (NFR-2).

@@ -1,5 +1,6 @@
 export { signToken, verifyToken, TOKEN_LIFETIME }
 
+import { randomUUID } from "node:crypto"
 import { SignJWT, jwtVerify } from "jose"
 
 import * as s from "@lib/json/schema"
@@ -17,13 +18,14 @@ function key(): Uint8Array {
   return new TextEncoder().encode(secret)
 }
 
-// Claims: sub = user id (agency id for agencies, FR-1.3), role, name, iat, exp.
+// A fresh jti distinguishes two logins for the same account in the same second.
 function signToken(user: UserActor): Future<Error, string> {
   // async, so a throw from key() becomes a rejection: Fluture's attemptP doesn't catch synchronous throws.
   return Future.attemptP(async () =>
     new SignJWT({ role: user.role, name: user.name })
       .setProtectedHeader({ alg: ALG, typ: "JWT" })
       .setSubject(user.id.value)
+      .setJti(randomUUID())
       .setIssuedAt()
       .setExpirationTime(`${TOKEN_LIFETIME.asSeconds()}s`)
       .sign(key())

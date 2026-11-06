@@ -8,7 +8,7 @@ import { POST as login } from "@/app/api/auth/login/route"
 import { GET as whoAmI } from "@/app/api/auth/me/route"
 import { POST as logout } from "@/app/api/auth/logout/route"
 
-import { test, expect, apiToken } from "../fixtures"
+import { test, expect, apiToken, authed } from "../fixtures"
 
 const run = <T>(f: Future<{ type: string; message: string }, T>) =>
   f.promise((e) => new Error(`${e.type}: ${e.message}`))
@@ -160,7 +160,7 @@ test("FR-11.1 first login on an empty database seeds sample data and creates a w
       expect(response.status).toBe(200)
       expect(
         await run(db.rows(sql`SELECT version FROM schema_migrations ORDER BY version`, s.object({ version: s.number })))
-      ).toEqual([{ version: 1 }, { version: 2 }])
+      ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }])
       expect(
         await run(db.one(sql`SELECT to_regclass('login_failures_at')::text AS name`, s.object({ name: s.string })))
       ).toEqual({ name: "login_failures_at" })
@@ -244,6 +244,9 @@ test("a pre-ledger database adopts migrations without changing data, sessions, a
       )
       expect(loginResponse.status).toBe(200)
       const cookie = loginResponse.headers.get("set-cookie")?.split(";")[0] ?? ""
+      const { token } = await Future.fromResult(
+        s.decode(s.object({ token: s.string }), await loginResponse.json())
+      ).promise((error) => new Error(error))
       const auditBefore = await run(
         db.rows(
           sql`SELECT id::text AS id, actor_id, action, record_id, reason, previous_nurse_id FROM audit_log ORDER BY id`,
@@ -260,13 +263,16 @@ test("a pre-ledger database adopts migrations without changing data, sessions, a
       // This is the schema of the shipped pre-ledger database, with its already modified data.
       await run(db.execute(sql`DROP TABLE schema_migrations`))
       await run(db.execute(sql`DROP INDEX login_failures_at`))
+      await run(db.execute(sql`ALTER TABLE auth_sessions DROP COLUMN bearer_hash`))
       await newInstance()
 
       const me = await whoAmI(new Request("https://shiftpatch.example/api/auth/me", { headers: { Cookie: cookie } }))
       expect(await me.json()).toEqual({ actor: { type: "User", id: "nurse-1", name: "Maria Lopez", role: "nurse" } })
+      const bearerMe = await whoAmI(new Request("https://shiftpatch.example/api/auth/me", authed(token)))
+      expect(await bearerMe.json()).toEqual({ actor: { type: "Anonymous" } })
       expect(
         await run(db.rows(sql`SELECT version FROM schema_migrations ORDER BY version`, s.object({ version: s.number })))
-      ).toEqual([{ version: 1 }, { version: 2 }])
+      ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }])
       expect(
         await run(db.one(sql`SELECT claimed_by FROM shifts WHERE id = 'shift-1'`, s.object({ claimed_by: s.string })))
       ).toEqual({ claimed_by: "nurse-2" })
@@ -354,7 +360,7 @@ test("a failed migration rolls back its DDL and version markers, then retries cl
           await run(
             db.rows(sql`SELECT version FROM schema_migrations ORDER BY version`, s.object({ version: s.number }))
           )
-        ).toEqual([{ version: 1 }, { version: 2 }])
+        ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }])
       } finally {
         await client.end()
       }

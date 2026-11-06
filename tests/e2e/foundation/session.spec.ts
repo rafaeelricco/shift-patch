@@ -1,6 +1,6 @@
 import { api } from "@api/endpoints"
 
-import { test, expect, ACCOUNTS, signInAs, signOutVia, decoded } from "../fixtures"
+import { test, expect, ACCOUNTS, PASSWORD, signInAs, signOutVia, decoded, authed } from "../fixtures"
 
 test("persistence: a reload keeps the session and the same role screen", async ({ page }) => {
   await signInAs(page, "nurse-1")
@@ -112,3 +112,49 @@ test("FR-1.8 sign-out ends the server session, not just the screen", async ({ pa
     .toEqual({ type: "Anonymous" })
   expect((await request.get("/api/shifts", { headers })).status()).toBe(401)
 })
+
+for (const transport of ["cookie", "bearer", "bearer with another cookie"] as const) {
+  test(`logout via ${transport} revokes both credentials from that login`, async ({ page, request }) => {
+    const login = async () => {
+      const response = await page.request.post("/api/auth/login", {
+        data: { email: ACCOUNTS["nurse-1"].email, password: PASSWORD },
+      })
+      expect(response.status()).toBe(200)
+      const cookie = response.headers()["set-cookie"]?.split(";")[0] ?? ""
+      expect(cookie).toMatch(/^sid=.+$/)
+      const { token } = await decoded(response, api.login.response)
+      return { cookie: { Cookie: cookie }, bearer: authed(token).headers }
+    }
+    const first = await login()
+    const second = await login()
+    const protectedStatus = async (headers: Record<string, string>) =>
+      (await request.get("/api/shifts", { headers })).status()
+
+    for (const headers of [first.cookie, first.bearer, second.cookie, second.bearer]) {
+      expect(await protectedStatus(headers)).toBe(200)
+    }
+
+    const headers =
+      transport === "cookie" ? first.cookie
+      : transport === "bearer" ? first.bearer
+      : { ...second.cookie, ...first.bearer }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await request.post("/api/auth/logout", { headers })
+      expect(response.status()).toBe(200)
+      expect(await response.json()).toEqual({})
+    }
+    for (const revoked of [first.cookie, first.bearer]) {
+      expect(await protectedStatus(revoked)).toBe(401)
+      const response = await request.get("/api/auth/me", { headers: revoked })
+      expect((await decoded(response, api.whoAmI.response)).actor).toEqual({ type: "Anonymous" })
+    }
+
+    const invalid = { ...second.cookie, Authorization: "Bearer invalid" }
+    expect(await protectedStatus(invalid)).toBe(401)
+    const invalidLogout = await request.post("/api/auth/logout", { headers: invalid })
+    expect(invalidLogout.status()).toBe(200)
+    expect(await invalidLogout.json()).toEqual({})
+    expect(await protectedStatus(second.cookie)).toBe(200)
+    expect(await protectedStatus(second.bearer)).toBe(200)
+  })
+}
