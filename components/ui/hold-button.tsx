@@ -44,7 +44,9 @@ function HoldButton({
       data-slot="hold-button"
       {...props}
       className={cn("touch-none overflow-hidden", className)}
-      onPointerDown={start}
+      onPointerDown={(event) => {
+        if (event.button === 0) start()
+      }}
       onPointerUp={stop}
       onPointerLeave={stop}
       onPointerCancel={stop}

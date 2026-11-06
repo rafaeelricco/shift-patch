@@ -170,6 +170,8 @@ test("FR-1.9 Maria's landing screen shows all six nurse test IDs without navigat
   await expect(page.getByTestId("shift-list-item")).toHaveCount(2)
   await expect(page.getByTestId("shift-claim-button")).toHaveCount(2)
   await expect(page.getByTestId("shift-cancel-button")).toHaveCount(1)
+  await page.getByRole("button", { name: "Upload a renewal", exact: true }).click()
+  await expect(page).toHaveURL(/\/$/)
   for (const id of ["credential-upload-input", "credential-expiry-date-input", "timesheet-table"]) {
     await expect(page.getByTestId(id)).toBeVisible()
   }

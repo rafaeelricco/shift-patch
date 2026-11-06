@@ -35,6 +35,9 @@ const buttonVariants = cva(
         xl: "h-control-xl px-gutter-xl",
         // An icon-only button: a circle on the button's own height, pressed by scale instead of the fill shrink.
         icon: "size-control-lg p-0 text-[length:var(--control-icon-size-lg)] transition-[color,box-shadow,transform] active:scale-97 active:before:[clip-path:inset(0_round_var(--outer-radius))] motion-reduce:active:scale-100",
+        // The same at the small height, for a button that sits beside a `sm` button (a row's menu chevron).
+        "icon-sm":
+          "size-control-sm p-0 text-[length:var(--control-icon-size-sm)] transition-[color,box-shadow,transform] active:scale-97 active:before:[clip-path:inset(0_round_var(--outer-radius))] motion-reduce:active:scale-100",
       },
     },
     defaultVariants: { variant: "solid-primary", size: "lg" },

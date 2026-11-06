@@ -49,7 +49,7 @@ async function visit() {
     render(<Page />)
   })
   expect(screen.getByText(PRIVATE_ROW)).toBeTruthy()
-  expect(screen.getByText("2030-10-15")).toBeTruthy()
+  expect(screen.getByText("Oct 15, 2030")).toBeTruthy()
 }
 
 function switchStorage() {
@@ -61,6 +61,7 @@ function switchStorage() {
 }
 
 function fillRenewal() {
+  fireEvent.click(screen.getByRole("button", { name: "Upload a renewal" }))
   fireEvent.change(screen.getByTestId("credential-expiry-date-input"), { target: { value: "2030-11-01" } })
   fireEvent.change(screen.getByTestId("credential-upload-input"), {
     target: { files: [new File(["sample"], "nurse-a.pdf", { type: "application/pdf" })] },
@@ -70,7 +71,7 @@ function fillRenewal() {
 function expectFreshAccount() {
   expect(screen.getAllByRole("button", { name: "Account: Nurse B, nurse" })).toHaveLength(2)
   expect(screen.queryByText(PRIVATE_ROW)).toBeNull()
-  expect(screen.queryByText("2030-10-15")).toBeNull()
+  expect(screen.queryByText("Oct 15, 2030")).toBeNull()
   expect(screen.getByTestId<HTMLInputElement>("credential-expiry-date-input").value).toBe("")
   expect(screen.getByTestId<HTMLInputElement>("credential-upload-input").files).toHaveLength(0)
 }
@@ -137,7 +138,7 @@ describe("account state on the page", () => {
     })
 
     expect(screen.getByText(PRIVATE_ROW)).toBeTruthy()
-    expect(screen.getByText("2030-10-15")).toBeTruthy()
+    expect(screen.getByText("Oct 15, 2030")).toBeTruthy()
     expect(screen.getAllByText(/Couldn't refresh, showing/)).toHaveLength(4)
     expect(screen.getByTestId<HTMLInputElement>("credential-expiry-date-input").value).toBe("2030-11-01")
     expect(screen.getByTestId<HTMLInputElement>("credential-upload-input").files?.[0]?.name).toBe("nurse-a.pdf")
@@ -168,6 +169,7 @@ describe("account state on the page", () => {
 
     expect(signal?.aborted).toBe(true)
     expectFreshAccount()
+    fireEvent.click(screen.getByRole("button", { name: "Upload a credential" }))
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Submit for review" }).disabled).toBe(false)
     fireEvent.change(screen.getByTestId("credential-expiry-date-input"), { target: { value: "2031-01-02" } })
     const requestCount = fetchMock.mock.calls.length
@@ -227,7 +229,17 @@ describe("successful shift actions", () => {
     expect(oldRead?.signal?.aborted).toBe(false)
 
     await act(async () => {
-      fireEvent.click(screen.getByTestId(`shift-${action}-button`))
+      const button = screen.getByTestId(`shift-${action}-button`)
+      if (action === "cancel") {
+        fireEvent.keyDown(button, { key: " " })
+        await vi.advanceTimersByTimeAsync(2000)
+      } else {
+        fireEvent.click(button)
+      }
+    })
+    // Sonner renders published toasts on its next task.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
     })
     expect(reads).toBe(3)
     expect(screen.queryByTestId(`shift-${action}-button`)).toBeNull()

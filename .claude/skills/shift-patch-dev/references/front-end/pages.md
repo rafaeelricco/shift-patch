@@ -37,8 +37,8 @@ Page Audit:
 - **`@api/endpoints`**, **`@api/request`**: typed `api.*` and `call`, `FetchError`, `fetchErrorToString` (see `./forms.md`).
 - **`@lib/json/schema`**: `s.Infer<typeof api.<name>.response>` derives a response type.
 - **`@ui/state-message`**: `StateMessage`, the loading, empty and error surface.
-- **`@ui/notification-banner`**: `NotificationBanner`, the outcome of an action.
-- **`@ui/page-shell`**: `PageShell` (title and icon). **`@ui/shift-card`**: `ShiftCard`. **`@ui/status-badge`**: `StatusBadge`.
+- **`@ui/notification-banner`**: `NotificationBanner`, inline errors. Sonner shows success confirmations.
+- **`@ui/page-shell`**: `PageShell` (title and icon). **`@ui/status-badge`**: `StatusBadge`. Shift rows are `ShiftLedger` and `ShiftRow` in `app/page.tsx`, their one importer.
 - **`@ui/datatable`**: `DataTable` (see `./tables.md`).
 
 ## Imports
@@ -54,7 +54,6 @@ import { call, fetchErrorToString, type FetchError } from "@api/request"
 import { useSession } from "@hooks/use-session"
 import { Button } from "@ui/button"
 import { PageShell } from "@ui/page-shell"
-import { ShiftCard } from "@ui/shift-card"
 import { StateMessage } from "@ui/state-message"
 ```
 
@@ -129,7 +128,7 @@ Branch every `RemoteData` case with `instanceof`, ending in `(state satisfies ne
 ## 4. `StateMessage` or `NotificationBanner`
 
 - **`StateMessage`** says what a region holds: `loading`, `empty`, or a read that failed, with a way to retry.
-- **`NotificationBanner`** says how an action went (FR-11.4). A screen has one, with `data-testid="notification-banner"`, told apart by its text, not by a second test ID. Claim, cancel, post and upload all report to it. Show server messages exactly as they came.
+- **Action feedback** uses `data-testid="notification-banner"` (FR-11.4). Claim, cancel, post and upload report errors inline and show successes in a Sonner toast that closes after four seconds. Show server messages exactly as they came.
 
 A blocked claim is a normal failure with a clear message. `shift-claim-button` stays visible and enabled for a nurse with a lapsed credential, and the banner explains (FR-4.2). Don't hide or disable it on the client.
 
@@ -237,16 +236,18 @@ function Content({ data }: { data: NurseScreenData }) {
     )
   }
   return (
-    <div className="flex flex-col gap-3">
-      {open.map((shift) => (
-        <ShiftCard
+    <ShiftLedger
+      rows={open}
+      renderRow={(shift) => (
+        <ShiftRow
           key={shift.id}
           shift={shift}
           data-testid="shift-list-item"
-          action={<Button data-testid="shift-claim-button">Claim shift</Button>}
+          who={<span className="truncate text-secondary">{shift.agencyName}</span>}
+          actions={<Button data-testid="shift-claim-button">Claim shift</Button>}
         />
-      ))}
-    </div>
+      )}
+    />
   )
 }
 ```

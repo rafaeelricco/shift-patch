@@ -190,7 +190,7 @@ test("FR-6.5 a cancelled shift can be claimed again", async ({ request }) => {
   })
 })
 
-test("FR-6.7 shift-cancel-button sits only on Maria's own claimed shifts and cancels in one click", async ({
+test("FR-6.7 shift-cancel-button sits only on Maria's claimed shifts and requires a hold", async ({
   page,
   browser,
   request,
@@ -204,8 +204,20 @@ test("FR-6.7 shift-cancel-button sits only on Maria's own claimed shifts and can
   await expect(mine(page).getByTestId("shift-cancel-button")).toHaveCount(1)
   await expect(mine(page).getByTestId("shift-list-item")).toHaveCount(0)
 
-  await mineCard(page, "2026-10-03").getByTestId("shift-cancel-button").click()
+  const claimed = mineCard(page, "2026-10-03")
+  await expect(mine(page).getByRole("heading", { name: /2026-10-03/ })).toBeVisible()
+  await expect(claimed.getByText("12 scheduled hours", { exact: true })).toBeVisible()
+  const button = claimed.getByTestId("shift-cancel-button")
+  let requests = 0
+  page.on("request", (req) => {
+    if (req.method() === "POST" && req.url().endsWith("/cancel")) requests++
+  })
+  await button.click()
+  await expect(button).toBeVisible()
+  expect(requests).toBe(0)
+  await button.click({ delay: 2100 })
   await expectBanner(page, "Shift cancelled, now open")
+  expect(requests).toBe(1)
   await expect(page.getByRole("dialog")).toHaveCount(0)
   const card = openCard(page, "2026-10-03")
   await expect(card.getByTestId("shift-claim-button")).toBeVisible()
@@ -238,7 +250,7 @@ test("FR-6.8 a nurse's cancel sends reason advance", async ({ page, auditLog }) 
   await signInAs(page, "nurse-1")
   const [req] = await Promise.all([
     page.waitForRequest("**/cancel"),
-    mineCard(page, "2026-10-03").getByTestId("shift-cancel-button").click(),
+    mineCard(page, "2026-10-03").getByTestId("shift-cancel-button").press("Space", { delay: 2100 }),
   ])
   const body: unknown = req.postDataJSON()
   expect(body).toEqual({ reason: "advance" })
@@ -255,7 +267,7 @@ test("FR-6.8 cancelling a shift already reopened elsewhere shows Shift is alread
   await expect(button).toBeVisible()
   await page.route("**/api/shifts", (r) => r.abort())
   expect((await cancel(request, "agency-a", "shift-2", { reason: "no-show" })).status()).toBe(200)
-  await button.click()
+  await button.click({ delay: 2100 })
   await expectBanner(page, "Shift is already open")
   await page.unroute("**/api/shifts")
   await expect(openCard(page, "2026-10-03")).toHaveCount(1, POLL)
@@ -265,7 +277,7 @@ test("FR-6.8 cancelling a shift already reopened elsewhere shows Shift is alread
 test("FR-6.7 a network failure shows a retry line and keeps the card", async ({ page }) => {
   await signInAs(page, "nurse-1")
   await page.route("**/cancel", (r) => r.abort())
-  await mineCard(page, "2026-10-03").getByTestId("shift-cancel-button").click()
+  await mineCard(page, "2026-10-03").getByTestId("shift-cancel-button").click({ delay: 2100 })
   await expectBanner(page, "Couldn't cancel shift, try again")
   await expect(mineCard(page, "2026-10-03").getByTestId("shift-cancel-button")).toBeVisible()
 })

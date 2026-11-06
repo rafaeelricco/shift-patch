@@ -144,6 +144,7 @@
   --color-success-surface: var(--color-background-success-surface);
   --color-secondary-soft: var(--color-background-secondary-soft);
   --color-icon-success: var(--app-color-icon-success);
+  --color-icon-warning: var(--app-color-icon-warning);
   --color-icon-error: var(--app-color-icon-error);
   /* Component-scoped tokens (--switch-*, --badge-*, --tooltip-*, --modal-*,
      --menu-*, --app-menu-*) get no name here; their component reads (--var). */
