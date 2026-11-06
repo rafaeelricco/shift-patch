@@ -1,4 +1,4 @@
-export { credentialSummary }
+export { credentialSummary, lockCredential }
 
 import * as s from "@lib/json/schema"
 import { sql, type Db, type DbError } from "@lib/db"
@@ -14,6 +14,11 @@ const schema_latest = s.object({
   status: s.stringEnum(["pending", "approved", "rejected"]),
   file_name: s.string,
 })
+
+/** Upload, review and claim share this lock, including when the nurse has no approved row yet. */
+function lockCredential(tx: Db, nurseId: string): Future<DbError, void> {
+  return tx.execute(sql`SELECT pg_advisory_xact_lock(2, hashtext(${nurseId}))`).map(() => undefined)
+}
 
 /** FR-7.5. "valid" uses the same facility today as FR-4.4. Pass the route's `tx` to read its own write. */
 function credentialSummary(db: Db, nurseId: string): Future<DbError, CredentialSummary> {

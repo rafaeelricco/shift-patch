@@ -3,6 +3,7 @@ import { api } from "@api/endpoints"
 import { db, sql, type DbError } from "@lib/db"
 import { audit } from "@lib/audit"
 import { authorize } from "@lib/auth"
+import { lockCredential } from "@lib/credentials"
 import { facilityToday } from "@lib/facility"
 import { Future } from "@lib/future"
 import { json, failure, respond, fromDb } from "@lib/http"
@@ -26,18 +27,17 @@ export async function POST(request: Request, ctx: RouteContext<"/api/shifts/[id]
               done(failure(404, NOT_FOUND))
               // FR-4.4: valid only if the approved expiry is on or after both facility today and the day the shift
               // ends (the next day for an overnight shift). The expiry date itself counts. No credential row means blocked.
-            : tx
-                .one(
-                  sql`SELECT EXISTS (
-                    SELECT 1 FROM credentials c, shifts s
-                    WHERE c.nurse_id = ${nurseId} AND s.id = ${id}
-                      AND c.expires_on >= ${facilityToday().pretty()}::date
-                      AND c.expires_on >= s.date + CASE WHEN s.end_time < s.start_time THEN 1 ELSE 0 END
-                  ) AS eligible`,
-                  s.object({ eligible: s.boolean })
+            : lockCredential(tx, nurseId)
+                .chain(() =>
+                  tx.maybeOne(
+                    sql`SELECT expires_on >= ${facilityToday().pretty()}::date
+                        AND expires_on >= ${shift.date}::date + ${shift.end_time < shift.start_time ? 1 : 0}::int AS eligible
+                      FROM credentials WHERE nurse_id = ${nurseId} FOR SHARE`,
+                    s.object({ eligible: s.boolean })
+                  )
                 )
-                .chain(({ eligible }) =>
-                  !eligible ?
+                .chain((credential) =>
+                  !credential?.eligible ?
                     // FR-8.3: a blocked claim changes nothing and adds only its entry, which commits.
                     audit(tx, {
                       actorId: nurseId,

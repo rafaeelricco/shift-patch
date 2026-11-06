@@ -60,8 +60,10 @@ import {
   type AdminShift,
   type AuditEntry,
   type CancelReason,
+  type CredentialDecision,
   type CredentialSummary,
   type NewShift,
+  type PendingCredential,
   type Shift,
   type TimesheetRow,
   type User,
@@ -2459,18 +2461,160 @@ const loadAdminShifts = (): Future<FetchError, ReadonlyArray<AdminShift>> =>
   call(api.adminShifts, {}).map(({ shifts }) => shifts)
 const loadAuditLog = (): Future<FetchError, ReadonlyArray<AuditEntry>> =>
   call(api.auditLog, {}).map(({ entries }) => entries)
+const loadPendingCredentials = (): Future<FetchError, ReadonlyArray<PendingCredential>> =>
+  call(api.pendingCredentials, {}).map(({ uploads }) => uploads)
 
-/** FR-1.11: coverage, scheduled hours and the audit log on one screen. Each section polls on its own (FR-5.4). */
+/** FR-1.11 and FR-7.6: coverage, credential review, hours and audit on one screen, with independent polls. */
 function AdminScreen({ user }: { user: User }) {
   const shifts = usePoll(loadAdminShifts, [user.id.value])
+  const credentials = usePoll(loadPendingCredentials, [user.id.value])
+  const banner = useBanner()
+  const { run, busy } = useSingleFlight()
+  const review = (id: string, decision: CredentialDecision): void =>
+    run(id, () => {
+      banner.clear()
+      return call(api.reviewCredential, { id }, { decision }).bimap(
+        (error) => {
+          banner.fail(error, "Couldn't review credential, try again")
+          credentials.refresh()
+          return error
+        },
+        (reviewed) => {
+          credentials.updateAndRefresh((rows) => rows.filter((row) => row.id !== reviewed.id))
+          banner.succeed(reviewed.status === "approved" ? "Credential approved" : "Credential rejected")
+          focusLater("#credential-review-title")
+          return reviewed
+        }
+      )
+    })
   return (
-    <SectionShell user={user} title="Coverage" banner={null} polled={shifts}>
+    <SectionShell
+      user={user}
+      title="Coverage"
+      banner={<BannerSlot notice={banner.notice} />}
+      toastId={banner.notice?.kind === "success" ? banner.notice.toastId : undefined}
+      polled={shifts}
+    >
       <div className={cn(riseIn, pageBody)}>
         <CoverageSection shifts={shifts} />
+        <CredentialReviewSection credentials={credentials} busy={busy} onReview={review} />
         <TimesheetSection user={user} />
         <AuditSection user={user} />
       </div>
     </SectionShell>
+  )
+}
+
+const CREDENTIAL_REVIEW_COLUMNS = {
+  nurse: new ColumnDef<PendingCredential>({
+    label: "Nurse",
+    sortFun: (a, b) => a.nurseName.localeCompare(b.nurseName),
+  }),
+  expiry: new ColumnDef<PendingCredential>({
+    label: "Expiry",
+    sortFun: (a, b) => a.expiresOn.compare(b.expiresOn),
+    className: "w-32",
+  }),
+  submitted: new ColumnDef<PendingCredential>({
+    label: "Submitted",
+    sortFun: (a, b) => a.uploadedAt.compare(b.uploadedAt),
+    className: "w-40",
+  }),
+  document: new ColumnDef<PendingCredential>({ label: "Document", sortFun: null }),
+  actions: new ColumnDef<PendingCredential>({ label: "Review", sortFun: null }),
+} satisfies ColumnsConfig<PendingCredential>
+
+function CredentialReviewSection({
+  credentials,
+  busy,
+  onReview,
+}: {
+  credentials: Polled<ReadonlyArray<PendingCredential>>
+  busy: ReadonlySet<string>
+  onReview: (id: string, decision: CredentialDecision) => void
+}) {
+  const [sort, setSort] = useState<SortState>({ sorting: "increasing", column: "submitted" })
+  const data = credentials.data
+  const rows = data instanceof Ready ? [...data.value].sort(comparator(CREDENTIAL_REVIEW_COLUMNS, sort)) : []
+  const emptyMessage =
+    data instanceof Failed ? <LoadFailed title="Couldn't load pending credentials" retry={credentials.refresh} />
+    : data instanceof Ready ?
+      <>
+        <p className="type-text-sm text-primary">No credentials to review</p>
+        <p className="mt-1 type-text-sm text-secondary">New nurse uploads appear here.</p>
+      </>
+    : data instanceof Loading || data instanceof NotAsked ?
+      <span className={cn("shiftpatch-page-shimmer", "type-text-sm")}>Loading pending credentials</span>
+    : (data satisfies never)
+  return (
+    <section
+      id="credential-review"
+      aria-labelledby="credential-review-title"
+      className="flex scroll-mt-17 flex-col gap-3"
+    >
+      <SectionHead
+        id="credential-review"
+        title="Credential review"
+        hint="Check each document before approving its expiry date."
+        count={data instanceof Ready ? data.value.length : undefined}
+        polled={credentials}
+      />
+      <DataTable
+        data-testid="admin-credential-review-table"
+        columns={CREDENTIAL_REVIEW_COLUMNS}
+        columnOrder={["nurse", "expiry", "submitted", "document", "actions"]}
+        rows={rows.map((row) => ({
+          key: row.id,
+          value: row,
+          contents: {
+            nurse: row.nurseName,
+            expiry: <span className="tabular-nums">{row.expiresOn.pretty()}</span>,
+            submitted: <span className="tabular-nums">{auditTime(row.uploadedAt)}</span>,
+            document: (
+              <span className="flex flex-col items-start gap-1">
+                <span className="max-w-56 truncate font-mono type-text-xs" title={row.fileName}>
+                  {row.fileName}
+                </span>
+                <a
+                  href={`/api/credentials/uploads/${encodeURIComponent(row.id)}/document`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`View document for ${row.nurseName}`}
+                  className="rounded-sm type-text-sm text-accent underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                  View document
+                </a>
+              </span>
+            ),
+            actions: (
+              <span className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline-primary"
+                  disabled={busy.has(row.id)}
+                  aria-label={`Approve credential for ${row.nurseName}`}
+                  onClick={() => onReview(row.id, "approved")}
+                >
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline-danger"
+                  disabled={busy.has(row.id)}
+                  aria-label={`Reject credential for ${row.nurseName}`}
+                  onClick={() => onReview(row.id, "rejected")}
+                >
+                  Reject
+                </Button>
+              </span>
+            ),
+          },
+        }))}
+        emptyMessage={emptyMessage}
+        sort={sort}
+        onSortChange={setSort}
+      />
+    </section>
   )
 }
 

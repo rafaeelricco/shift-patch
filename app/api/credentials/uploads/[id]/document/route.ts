@@ -5,7 +5,6 @@ import { Future } from "@lib/future"
 import { failure, respond, fromDb } from "@lib/http"
 
 const schema_document = s.object({
-  nurse_id: s.string,
   content_type: s.string,
   file_name: s.string,
   document: s.string,
@@ -20,14 +19,14 @@ export async function GET(
     authorize(request, ["nurse", "admin"]).chain((user) =>
       db
         .maybeOne(
-          sql`SELECT nurse_id, content_type, file_name, encode(document, 'base64') AS document FROM credential_uploads WHERE id = ${id}`,
+          sql`SELECT content_type, file_name, encode(document, 'base64') AS document FROM credential_uploads
+            WHERE id = ${id} ${user.role === "nurse" ? sql`AND nurse_id = ${user.id.value}` : sql``}`,
           schema_document
         )
         .mapRej(fromDb)
         .chain((row) =>
-          row === null ? Future.reject(failure(404, "Document not found"))
-          : user.role === "nurse" && row.nurse_id !== user.id.value ?
-            Future.reject(failure(403, "You don't have access to this"))
+          row === null ?
+            Future.reject(failure(404, "Document not found"))
           : Future.resolve(
               new Response(new Uint8Array(Buffer.from(row.document, "base64")), {
                 status: 200,

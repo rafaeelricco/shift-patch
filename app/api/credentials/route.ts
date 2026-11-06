@@ -4,7 +4,7 @@ import { db, sql } from "@lib/db"
 import { Id } from "@lib/id"
 import { audit } from "@lib/audit"
 import { authorize } from "@lib/auth"
-import { credentialSummary } from "@lib/credentials"
+import { credentialSummary, lockCredential } from "@lib/credentials"
 import { facilityToday } from "@lib/facility"
 import { Future } from "@lib/future"
 import { DateOnly } from "@lib/time"
@@ -16,7 +16,6 @@ type StoredType = Exclude<UploadType, "image/webp">
 const MAX_BYTES = api.uploadCredential.maxBytes // 4 MB
 const TOO_LARGE = "File must be 4 MB or smaller"
 const WRONG_TYPE = "File must be a PDF, PNG or JPEG"
-const UPLOAD_LOCK = 2 // two-key advisory lock namespace, apart from Foundation's single-key locks
 
 // FR-7.2: the type comes from the content, never from the Content-Type header or the name.
 const SIGNATURES: ReadonlyArray<{ type: StoredType; magic: ReadonlyArray<number> }> = [
@@ -94,8 +93,7 @@ export async function POST(request: Request): Promise<Response> {
           const id = `upload-${Id.random<"Upload">().value}`
           return db
             .transaction((tx) =>
-              tx
-                .execute(sql`SELECT pg_advisory_xact_lock(${UPLOAD_LOCK}, hashtext(${nurseId}))`)
+              lockCredential(tx, nurseId)
                 // FR-7.5: a new upload replaces this nurse's pending one and its document.
                 .chain(() =>
                   tx.execute(sql`DELETE FROM credential_uploads WHERE nurse_id = ${nurseId} AND status = 'pending'`)

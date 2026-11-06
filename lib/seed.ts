@@ -24,7 +24,8 @@ function resetToSeed(): Future<DbError, void> {
       .chain(() =>
         Future.traverse(
           (c: (typeof SAMPLE.credentials)[number]) =>
-            tx.execute(sql`UPDATE credentials SET expires_on = ${c.expiresOn} WHERE nurse_id = ${c.nurseId}`),
+            tx.execute(sql`INSERT INTO credentials (nurse_id, expires_on) VALUES (${c.nurseId}, ${c.expiresOn})
+              ON CONFLICT (nurse_id) DO UPDATE SET expires_on = EXCLUDED.expires_on`),
           [...SAMPLE.credentials]
         )
       )
