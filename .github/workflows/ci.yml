@@ -9,18 +9,18 @@ permissions:
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    runs-on: r1cco-ci
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       # The pnpm version comes from packageManager in package.json.
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: package.json
-          cache: pnpm
+      - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
@@ -29,7 +29,8 @@ jobs:
       - run: pnpm audit --audit-level=high
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: r1cco-ci
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 25
     services:
       postgres:
@@ -37,24 +38,24 @@ jobs:
         env:
           POSTGRES_DB: shiftpatch_e2e
           POSTGRES_HOST_AUTH_METHOD: trust # throwaway container, so no password is committed (NFR-2)
-        ports: ["5432:5432"]
+        ports: ["127.0.0.1::5432"]
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
-    env:
-      E2E_DATABASE_URL: postgres://postgres@localhost:5432/shiftpatch_e2e
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: package.json
-          cache: pnpm
+      - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile
       - run: echo "E2E_JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV" # generated per run, never committed
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
+      - run: pnpm exec playwright install chromium
+      - name: End-to-end tests
+        env:
+          E2E_DATABASE_URL: postgres://postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/shiftpatch_e2e
+        run: pnpm test:e2e
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -63,7 +64,8 @@ jobs:
           retention-days: 7
 
   owasp:
-    runs-on: ubuntu-latest
+    runs-on: r1cco-ci
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 15
     container: semgrep/semgrep:1.183.0
     steps:
